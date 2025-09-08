@@ -54,3 +54,24 @@ class TestResult(BaseModel):
         if self.total_requests == 0:
             return 0.0
         return (self.failed_requests / self.total_requests) * 100
+
+class GenerateDSLRequest(BaseModel):
+    description: str = Field(..., description="Natural language description of the user journey")
+    target_domain: Optional[str] = Field(None, description="Target domain (e.g., ecommerce, banking)")
+    swagger_docs: Optional[str] = Field(None, description="Swagger docs (optional)")
+    api_endpoints: Optional[List[str]] = Field(None, description="API endpoints (optional)")
+    auto_run: Optional[bool] = Field(False, description="Automatically run test after generating DSL")
+    target_url: Optional[str] = Field(None, description="Target URL for auto-run test")
+
+class OptimizeDSLRequest(BaseModel):
+    dsl_script: str = Field(..., description="Existing DSL script to optimize")
+    optimization_goal: str = Field(default="improve performance", description="Goal for optimization")
+
+class DSLResponse(BaseModel):
+    dsl_script: str = Field(..., description="Generated or optimized DSL script")
+    status: str = Field(..., description="Status of the operation")
+    model_used: Optional[str] = Field(None, description="LLM model used")
+    explanation: Optional[str] = Field(None, description="Explanation of changes (for optimization)")
+    error: Optional[str] = Field(None, description="Error message if operation failed")
+    test_id: Optional[str] = Field(None, description="Test ID if auto-run was enabled")
+    message: Optional[str] = Field(None, description="Additional message about the operation")

@@ -17,9 +17,10 @@ backend_new_dir = os.path.join(current_dir, '..', '..')
 sys.path.insert(0, backend_new_dir)
 
 
-from shared.models import PingRequest, TestRequest, TestStatus, BaseResponse, ErrorResponse
+from shared.models import PingRequest, TestRequest, TestStatus, BaseResponse, ErrorResponse, GenerateDSLRequest, OptimizeDSLRequest, DSLResponse
 from shared.DSL.main import parse_dsl
 from modules.utils import ping_backend, calculate_test_progress, format_test_results
+from modules.llm_service import llm_service
 
 rabbitmq_connection = None
 test_queue = None
@@ -282,6 +283,191 @@ async def delete_test(test_id: str):
     if test_id in test_results:
         del test_results[test_id]
     return {"message": "Test deleted"}
+
+@app.post("/generate-dsl", response_model=DSLResponse)
+async def generate_dsl(request: GenerateDSLRequest):
+    
+    try:
+        logger.info(f"Generating DSL for description: {request.description[:100]}...")
+        
+        if not request.swagger_docs and not request.api_endpoints:
+            raise HTTPException(
+                status_code=400,
+                detail="Za generiranje DSL-a iz opisa potrebno je predati ili swagger_docs ili api_endpoints"
+            )
+        
+        result = await llm_service.generate_dsl_from_description(
+            request.description, 
+            request.swagger_docs,  
+            request.api_endpoints
+        )
+        
+        if result["status"] == "error":
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate DSL: {result.get('error', 'Unknown error')}"
+            )
+        
+        
+        try:
+            dsl_data = parse_dsl(result["dsl_script"])
+            if not dsl_data.get("steps") and not dsl_data.get("user_journey"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Generated DSL does not contain any steps or user journeys"
+                )
+        except Exception as e:
+            logger.warning(f"Generated DSL validation failed: {e}")
+            
+        
+        response_data = DSLResponse(
+            dsl_script=result["dsl_script"],
+            status=result["status"],
+            model_used=result.get("model_used"),
+            error=result.get("error")
+        )
+        
+        if request.auto_run and request.target_url and result["status"] == "success":
+            try:
+                test_id = f"auto_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                test_request = {
+                    "test_id": test_id,
+                    "target_url": request.target_url,
+                    "dsl_script": result["dsl_script"],
+                    "swagger_docs": None,
+                    "auth_credentials": {}
+                }
+                
+                test_status = TestStatus(
+                    test_id=test_id,
+                    status="pending",
+                    progress=0.0,
+                    start_time=datetime.now()
+                )
+                active_tests[test_id] = test_status
+                
+                if test_queue:
+                    channel = await rabbitmq_connection.channel()
+                    await channel.default_exchange.publish(
+                        aio_pika.Message(
+                            body=json.dumps(test_request).encode(),
+                            delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+                        ),
+                        routing_key="test_tasks"
+                    )
+                    test_status.status = "running"
+                    active_tests[test_id] = test_status
+                    
+                    response_data.test_id = test_id
+                    response_data.message = "DSL generated and test started automatically"
+                else:
+                    response_data.message = "DSL generated but test could not be started (RabbitMQ unavailable)"
+                    
+            except Exception as e:
+                logger.error(f"Error in auto-run: {e}")
+                response_data.message = f"DSL generated but auto-run failed: {str(e)}"
+        
+        return response_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in generate_dsl endpoint: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+@app.post("/optimize-dsl", response_model=DSLResponse)
+async def optimize_dsl(request: OptimizeDSLRequest):
+    
+    try:
+        logger.info(f"Optimizing DSL with goal: {request.optimization_goal}")
+        try:
+            dsl_data = parse_dsl(request.dsl_script)
+            if not dsl_data.get("steps") and not dsl_data.get("user_journey"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Provided DSL does not contain any steps or user journeys"
+                )
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid DSL script: {str(e)}"
+            )
+        
+        result = await llm_service.optimize_existing_dsl(
+            request.dsl_script, 
+            request.optimization_goal
+        )
+        
+        if result["status"] == "error":
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to optimize DSL: {result.get('error', 'Unknown error')}"
+            )
+        try:
+            optimized_dsl_data = parse_dsl(result["optimized_dsl"])
+            if not optimized_dsl_data.get("steps") and not optimized_dsl_data.get("user_journey"):
+                logger.warning("Optimized DSL validation failed - returning original")
+                return DSLResponse(
+                    dsl_script=request.dsl_script,
+                    status="warning",
+                    model_used=result.get("model_used"),
+                    explanation="Optimization failed validation, returning original DSL"
+                )
+        except Exception as e:
+            logger.warning(f"Optimized DSL validation failed: {e}")
+            
+        
+        return DSLResponse(
+            dsl_script=result["optimized_dsl"],
+            status=result["status"],
+            model_used=result.get("model_used"),
+            explanation=result.get("explanation"),
+            error=result.get("error")
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in optimize_dsl endpoint: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+@app.post("/validate-dsl")
+async def validate_dsl(dsl_script: str):
+    
+    try:
+        dsl_data = parse_dsl(dsl_script)
+        
+        validation_result = {
+            "valid": True,
+            "parsed_data": dsl_data,
+            "issues": []
+        }
+        
+        
+        if not dsl_data.get("steps") and not dsl_data.get("user_journey"):
+            validation_result["valid"] = False
+            validation_result["issues"].append("DSL must contain at least one step or user journey")
+        
+        if dsl_data.get("num_users", 0) <= 0:
+            validation_result["issues"].append("Number of users should be greater than 0")
+        
+        if dsl_data.get("test_duration", 0) <= 0:
+            validation_result["issues"].append("Test duration should be greater than 0")
+        
+        return validation_result
+        
+    except Exception as e:
+        return {
+            "valid": False,
+            "parsed_data": None,
+            "issues": [f"DSL parsing error: {str(e)}"]
+        }
 
 if __name__ == "__main__":
     import uvicorn
