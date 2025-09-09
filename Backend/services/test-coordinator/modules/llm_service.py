@@ -31,24 +31,24 @@ class LLMService:
             system_prompt = self._get_system_prompt()
             api_info = ""
             if swagger_docs:
-                api_info += f"\n\nSwagger dokumentacija:\n{swagger_docs[:2000]}..."  # Ograniči na 2000 znakova
+                api_info += f"\n\nSwagger documentation:\n{swagger_docs[:2000]}..." 
             if api_endpoints:
-                api_info += f"\n\nDostupni API endpoint-i:\n" + "\n".join(api_endpoints)
+                api_info += f"\n\nAvailable API endpoints:\n" + "\n".join(api_endpoints)
             
             user_prompt = f"""
-            Generiraj DSL skriptu za sljedeći user journey opis:
+            Generate a DSL script for the following user journey description:
             
             {description}
             
             {api_info}
             
-            Generiraj kompletnu DSL skriptu koja uključuje:
-            1. Osnovne parametre (users, duration, pattern)
-            2. User journey definicije s odgovarajućim HTTP metodama
-            3. Realistične API endpoint-ove i payload-ove (koristi dostupne endpoint-e)
-            4. Odgovarajući workload pattern za opisani scenarij
+            Generate a complete DSL script that includes:
+            1. Basic parameters (users, duration, pattern)
+            2. User journey definitions with appropriate HTTP methods
+            3. Realistic API endpoints and payloads (use available endpoints)
+            4. Appropriate workload pattern for the described scenario
             
-            Odgovori SAMO s DSL skriptom, bez dodatnih objašnjenja.
+            Respond ONLY with the DSL script, without additional explanations.
             """
             
             response = await self.client.chat.completions.create(
@@ -89,20 +89,20 @@ class LLMService:
         try:
             system_prompt = self._get_optimization_system_prompt()
             user_prompt = f"""
-            Optimiziraj sljedeći DSL na temelju cilja: {optimization_goal}
+            Optimize the following DSL based on the goal: {optimization_goal}
             
-            Postojeći DSL:
+            Existing DSL:
             ```dsl
             {dsl_script}
             ```
             
-            Tvoja zadaća:
-            1. Analiziraj postojeći DSL
-            2. Predloži poboljšanja za {optimization_goal}
-            3. Generiraj optimiziranu verziju
-            4. Objasni ključne promjene
+            Your task:
+            1. Analyze the existing DSL
+            2. Suggest improvements for {optimization_goal}
+            3. Generate an optimized version
+            4. Explain key changes
             
-            Odgovori s optimiziranim DSL-om i kratkim objašnjenjem promjena.
+            Respond with the optimized DSL and a brief explanation of changes.
             """
             
             response = await self.client.chat.completions.create(
@@ -147,25 +147,25 @@ class LLMService:
     
     def _get_system_prompt(self):
         return """
-        Ti si ekspert za generiranje DSL skripti za testiranje performansi web aplikacija.
+        You are an expert in generating DSL scripts for web application performance testing.
         
-        Tvoja zadaća je generirati valjane DSL skripte koje:
-        1. Definiraju user journey-e s realističnim API pozivima
-        2. Koriste odgovarajuće HTTP metode (GET, POST, PUT, DELETE, PATCH)
-        3. Uključuju realistične payload-ove za POST/PUT zahtjeve
-        4. Koriste prikladne workload pattern-e (steady, burst, ramp_up, daily_cycle, spike, gradual_ramp)
-        5. Definiraju razumne brojeve korisnika i trajanje testa
+        Your task is to generate valid DSL scripts that:
+        1. Define user journeys with realistic API calls
+        2. Use appropriate HTTP methods (GET, POST, PUT, DELETE, PATCH)
+        3. Include realistic payloads for POST/PUT requests
+        4. Use suitable workload patterns (steady, burst, ramp_up, daily_cycle, spike, gradual_ramp)
+        5. Define reasonable numbers of users and test duration
         
-        Format DSL-a:
-        - users: [broj] - broj simuliranih korisnika
-        - duration: [broj] - trajanje u sekundama
-        - pattern: [pattern_name] - uzorak opterećenja
-        - journey: [ime] - ime user journey-a
-        - repeat: [broj] - broj ponavljanja (opcionalno)
-        - - [METHOD] [path] [payload] - korak u journey-u
-        - end - kraj journey-a
+        DSL format:
+        - users: [number] - number of simulated users
+        - duration: [number] - duration in seconds
+        - pattern: [pattern_name] - workload pattern
+        - journey: [name] - user journey name
+        - repeat: [number] - number of repetitions (optional)
+        - - [METHOD] [path] [payload] - step in journey
+        - end - end of journey
         
-        Primjer:
+        Example:
         users: 10
         duration: 300
         pattern: steady
@@ -181,15 +181,15 @@ class LLMService:
     
     def _get_optimization_system_prompt(self):
         return """
-        Ti si ekspert za optimizaciju DSL skripti za testiranje performansi.
+        You are an expert in optimizing DSL scripts for performance testing.
         
-        Tvoja zadaća je analizirati postojeći DSL i predložiti poboljšanja za:
-        - Povećanje performansi testa
-        - Realističnije user journey-e
-        - Bolje workload pattern-e
-        - Optimizaciju broja korisnika i trajanja
-        - Dodavanje validacijskih koraka
+        Your task is to analyze existing DSL and suggest improvements for:
+        - Increasing test performance
+        - More realistic user journeys
+        - Better workload patterns
+        - Optimizing number of users and duration
+        - Adding validation steps
         
-        Uvijek zadrži osnovnu strukturu DSL-a i dodaj samo smislene poboljšanja.
+        Always maintain the basic DSL structure and add only meaningful improvements.
         """
 llm_service = LLMService()

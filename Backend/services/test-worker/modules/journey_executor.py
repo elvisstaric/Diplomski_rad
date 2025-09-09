@@ -60,17 +60,9 @@ async def execute_single_step(session, target_url: str, endpoint: Dict,
         else:
             requests[0] += 1
             failed[0] += 1
-            errors.append({
-                "endpoint": url,
-                "status_code": response.status,
-                "error": response_text[:100]
-            })
+            errors.append(f"HTTP {response.status}: {url} - {response_text[:100]}")
         
     except Exception as e:
         requests[0] += 1
         failed[0] += 1
-        errors.append({
-            "endpoint": url,
-            "status_code": None,
-            "error": str(e)
-        })
+        errors.append(f"Exception: {url} - {str(e)}")

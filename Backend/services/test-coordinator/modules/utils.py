@@ -78,6 +78,7 @@ def format_test_results(test_result: Dict[str, Any]):
         "avg_latency": test_result.get("avg_latency", 0.0),
         "success_rate": round((successful_requests / max(total_requests, 1)) * 100, 2),
         "failure_rate": round((failed_requests / max(total_requests, 1)) * 100, 2),
+        "error_details": test_result.get("error_details", []),
         "start_time": test_result.get("start_time"),
         "end_time": test_result.get("end_time")
     }
