@@ -128,6 +128,23 @@
             rows="15"
             placeholder="users: 10&#10;duration: 300&#10;pattern: steady&#10;&#10;journey: test_flow&#10;- GET /api/test&#10;end"
           ></textarea>
+
+          <!-- Optimization Instructions -->
+          <div class="mt-4">
+            <label class="form-label"
+              >Optimization Instructions (Optional)</label
+            >
+            <textarea
+              v-model="formData.optimizationInstructions"
+              class="form-input"
+              rows="3"
+              placeholder="e.g., Increase user count, add more realistic delays, optimize request patterns..."
+            ></textarea>
+            <p class="text-sm text-gray-500 mt-1">
+              Provide specific instructions on how you want the DSL to be
+              optimized
+            </p>
+          </div>
         </div>
 
         <!-- Auth Credentials -->
@@ -177,6 +194,17 @@
           >
             <span v-if="isValidating">Validating...</span>
             <span v-else>Validate DSL</span>
+          </button>
+
+          <button
+            v-if="formData.dslMethod === 'manual'"
+            type="button"
+            @click="optimizeDsl"
+            :disabled="isOptimizing"
+            class="btn-secondary disabled:opacity-50"
+          >
+            <span v-if="isOptimizing">Optimizing...</span>
+            <span v-else>Optimize DSL</span>
           </button>
         </div>
       </form>
@@ -281,6 +309,97 @@
         </div>
       </div>
     </div>
+
+    <!-- Optimized DSL Modal -->
+    <div
+      v-if="showOptimizedDsl"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    >
+      <div
+        class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden"
+      >
+        <div
+          class="flex justify-between items-center p-4 border-b border-gray-200"
+        >
+          <h3 class="text-lg font-semibold">Optimized DSL</h3>
+          <button
+            @click="showOptimizedDsl = false"
+            class="text-gray-400 hover:text-gray-600"
+          >
+            <svg
+              class="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              ></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="p-4 overflow-y-auto max-h-96">
+          <!-- Optimization Instructions -->
+          <div v-if="formData.optimizationInstructions" class="mb-4">
+            <h4 class="text-sm font-medium text-gray-700 mb-2">
+              Optimization Instructions:
+            </h4>
+            <div class="bg-blue-50 p-3 rounded-lg border border-blue-200">
+              <p class="text-sm text-blue-800">
+                {{ formData.optimizationInstructions }}
+              </p>
+            </div>
+          </div>
+
+          <!-- Optimization Explanation -->
+          <div v-if="optimizationExplanation" class="mb-4">
+            <h4 class="text-sm font-medium text-gray-700 mb-2">
+              Optimization Changes:
+            </h4>
+            <div class="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+              <p class="text-sm text-yellow-800">
+                {{ optimizationExplanation }}
+              </p>
+            </div>
+          </div>
+
+          <!-- Original DSL -->
+          <div class="mb-4">
+            <h4 class="text-sm font-medium text-gray-700 mb-2">
+              Original DSL:
+            </h4>
+            <pre
+              class="bg-gray-100 p-3 rounded-lg text-sm font-mono whitespace-pre-wrap text-gray-600"
+              >{{ formData.dslScript }}</pre
+            >
+          </div>
+
+          <!-- Optimized DSL -->
+          <div>
+            <h4 class="text-sm font-medium text-gray-700 mb-2">
+              Optimized DSL:
+            </h4>
+            <pre
+              class="bg-green-50 p-3 rounded-lg text-sm font-mono whitespace-pre-wrap border border-green-200"
+              >{{ optimizedDsl }}</pre
+            >
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-3 p-4 border-t border-gray-200">
+          <button @click="showOptimizedDsl = false" class="btn-secondary">
+            Cancel
+          </button>
+          <button @click="useOptimizedDsl" class="btn-primary">
+            Use Optimized DSL
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -294,10 +413,14 @@ export default {
   setup(props, { emit }) {
     const isLoading = ref(false);
     const isValidating = ref(false);
+    const isOptimizing = ref(false);
     const showDslPreview = ref(false);
     const showDslEditor = ref(false);
+    const showOptimizedDsl = ref(false);
     const generatedDsl = ref("");
     const editableDsl = ref("");
+    const optimizedDsl = ref("");
+    const optimizationExplanation = ref("");
 
     const formData = reactive({
       targetUrl: "",
@@ -313,6 +436,7 @@ pattern: steady
 journey: test_flow
 - GET /api/test
 end`,
+      optimizationInstructions: "",
       authCredentials: {
         username: "",
         password: "",
@@ -327,9 +451,45 @@ end`,
       formData.apiEndpoints.splice(index, 1);
     };
 
+    const validatePattern = (dslScript) => {
+      const validPatterns = [
+        "burst",
+        "steady",
+        "ramp_up",
+        "daily_cycle",
+        "spike",
+        "gradual_ramp",
+      ];
+      const lines = dslScript.split("\n");
+
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (trimmedLine.startsWith("pattern:")) {
+          const patternValue = trimmedLine.split(":")[1].trim();
+          if (!validPatterns.includes(patternValue)) {
+            return {
+              isValid: false,
+              message: `Invalid pattern '${patternValue}'. Valid patterns are: ${validPatterns.join(
+                ", "
+              )}`,
+            };
+          }
+        }
+      }
+
+      return { isValid: true };
+    };
+
     const validateDsl = async () => {
       if (!formData.dslScript.trim()) {
         alert("Please enter a DSL script to validate");
+        return;
+      }
+
+      // First check pattern locally
+      const patternCheck = validatePattern(formData.dslScript);
+      if (!patternCheck.isValid) {
+        alert(`Pattern validation failed:\n${patternCheck.message}`);
         return;
       }
 
@@ -354,6 +514,38 @@ end`,
       }
     };
 
+    const optimizeDsl = async () => {
+      if (!formData.dslScript.trim()) {
+        alert("Please enter a DSL script to optimize");
+        return;
+      }
+
+      isOptimizing.value = true;
+      try {
+        const requestData = {
+          dsl_script: formData.dslScript,
+          optimization_goal:
+            formData.optimizationInstructions || "improve performance",
+        };
+
+        const response = await dslApi.optimizeDsl(requestData);
+        const result = response.data;
+
+        if (result.status === "success") {
+          optimizedDsl.value = result.dsl_script;
+          optimizationExplanation.value = result.explanation || "";
+          showOptimizedDsl.value = true;
+        } else {
+          throw new Error(result.error || "Failed to optimize DSL");
+        }
+      } catch (error) {
+        console.error("DSL optimization error:", error);
+        alert("Error optimizing DSL");
+      } finally {
+        isOptimizing.value = false;
+      }
+    };
+
     const generateDsl = async () => {
       try {
         const requestData = {
@@ -374,7 +566,7 @@ end`,
           throw new Error(result.error || "Failed to generate DSL");
         }
       } catch (error) {
-        console.error("DSL generation error:", error);
+        console.error("DSL generation error");
         throw error;
       }
     };
@@ -391,6 +583,11 @@ end`,
       runTest();
     };
 
+    const useOptimizedDsl = () => {
+      formData.dslScript = optimizedDsl.value;
+      showOptimizedDsl.value = false;
+    };
+
     const runTestWithDsl = () => {
       formData.dslScript = generatedDsl.value;
       showDslPreview.value = false;
@@ -398,6 +595,12 @@ end`,
     };
 
     const runTest = async () => {
+      const patternCheck = validatePattern(formData.dslScript);
+      if (!patternCheck.isValid) {
+        alert(`Cannot start test:\n${patternCheck.message}`);
+        return;
+      }
+
       isLoading.value = true;
       try {
         const testId = `test_${Date.now()}`;
@@ -419,10 +622,7 @@ end`,
         }
       } catch (error) {
         console.error("Test creation error:", error);
-        alert(
-          "Error starting test: " +
-            (error.response?.data?.detail || error.message)
-        );
+        alert("Error starting test");
       } finally {
         isLoading.value = false;
       }
@@ -441,7 +641,7 @@ end`,
             await runTest();
           }
         } catch (error) {
-          alert("Error generating DSL: " + error.message);
+          alert("Error generating DSL");
         }
       } else {
         await runTest();
@@ -452,15 +652,21 @@ end`,
       formData,
       isLoading,
       isValidating,
+      isOptimizing,
       showDslPreview,
       showDslEditor,
+      showOptimizedDsl,
       generatedDsl,
       editableDsl,
+      optimizedDsl,
+      optimizationExplanation,
       addEndpoint,
       removeEndpoint,
       validateDsl,
+      optimizeDsl,
       editDsl,
       saveEditedDsl,
+      useOptimizedDsl,
       runTestWithDsl,
       handleSubmit,
     };

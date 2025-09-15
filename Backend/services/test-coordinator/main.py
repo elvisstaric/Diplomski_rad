@@ -438,7 +438,7 @@ async def optimize_dsl(request: OptimizeDSLRequest):
         )
 
 @app.post("/validate-dsl")
-async def validate_dsl(dsl_script: str):
+async def validate_dsl(dsl_script: str = Body(..., media_type="text/plain")):
     
     try:
         dsl_data = parse_dsl(dsl_script)
