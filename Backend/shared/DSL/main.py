@@ -8,6 +8,9 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
             "num_users": 1,
             "test_duration": 60,
             "workload_pattern": "steady",
+            "user_model": "closed",
+            "arrival_rate": None,
+            "session_duration": None,
             "steps": [],
             "user_journey": []
         }
@@ -17,6 +20,9 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
     num_users = 1
     test_duration = 60
     workload_pattern = "steady"
+    user_model = "closed"
+    arrival_rate = None
+    session_duration = None
     pattern_config = {}
     current_journey_step = None
 
@@ -42,6 +48,20 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
             pattern_value = line.split(":")[1].strip()
             if pattern_value in ["burst", "steady", "ramp_up", "daily_cycle", "spike", "gradual_ramp"]:
                 workload_pattern = pattern_value
+        elif line.startswith("user_model:"):
+            user_model_value = line.split(":")[1].strip()
+            if user_model_value in ["closed", "open"]:
+                user_model = user_model_value
+        elif line.startswith("arrival_rate:"):
+            try:
+                arrival_rate = float(line.split(":")[1].strip())
+            except (ValueError, IndexError):
+                arrival_rate = None
+        elif line.startswith("session_duration:"):
+            try:
+                session_duration = float(line.split(":")[1].strip())
+            except (ValueError, IndexError):
+                session_duration = None
         elif line.startswith("peak_hours:"):
             try:
                 hours_str = line.split(":", 1)[1].strip()
@@ -141,6 +161,9 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
         "num_users": num_users,
         "test_duration": test_duration,
         "workload_pattern": workload_pattern,
+        "user_model": user_model,
+        "arrival_rate": arrival_rate,
+        "session_duration": session_duration,
         "pattern_config": pattern_config,
         "steps": steps,
         "user_journey": user_journey

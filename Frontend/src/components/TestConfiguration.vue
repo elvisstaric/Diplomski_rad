@@ -44,6 +44,73 @@
           </div>
         </div>
 
+        <!-- User Model Selection -->
+        <div>
+          <label class="form-label">User Model</label>
+          <div class="space-y-3">
+            <label class="flex items-center">
+              <input
+                v-model="formData.userModel"
+                type="radio"
+                value="closed"
+                class="mr-3"
+              />
+              <span>Closed Model (Fixed Users)</span>
+            </label>
+            <label class="flex items-center">
+              <input
+                v-model="formData.userModel"
+                type="radio"
+                value="open"
+                class="mr-3"
+              />
+              <span>Open Model (Arrival Rate)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Open Model Configuration -->
+        <div
+          v-if="formData.userModel === 'open'"
+          class="space-y-4 p-4 bg-green-50 rounded-lg"
+        >
+          <h3 class="font-medium text-gray-900">Open Model Configuration</h3>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">Arrival Rate (users/second)</label>
+              <input
+                v-model.number="formData.arrivalRate"
+                type="number"
+                step="0.1"
+                min="0.1"
+                max="100"
+                class="form-input"
+                placeholder="2.5"
+              />
+              <p class="text-sm text-gray-500 mt-1">
+                How many users arrive per second
+              </p>
+            </div>
+
+            <div>
+              <label class="form-label">Session Duration (seconds)</label>
+              <input
+                v-model.number="formData.sessionDuration"
+                type="number"
+                step="1"
+                min="1"
+                max="3600"
+                class="form-input"
+                placeholder="45"
+              />
+              <p class="text-sm text-gray-500 mt-1">
+                Average session duration per user
+              </p>
+            </div>
+          </div>
+        </div>
+
         <!-- LLM Configuration (shown when LLM is selected) -->
         <div
           v-if="formData.dslMethod === 'llm'"
@@ -425,6 +492,9 @@ export default {
     const formData = reactive({
       targetUrl: "",
       dslMethod: "manual",
+      userModel: "closed",
+      arrivalRate: 2.5,
+      sessionDuration: 45,
       description: "",
       swaggerDocs: "",
       apiEndpoints: [""],
@@ -432,6 +502,7 @@ export default {
       dslScript: `users: 10
 duration: 300
 pattern: steady
+user_model: closed
 
 journey: test_flow
 - GET /api/test
@@ -552,6 +623,11 @@ end`,
           description: formData.description,
           swagger_docs: formData.swaggerDocs || null,
           api_endpoints: formData.apiEndpoints.filter((ep) => ep.trim()),
+          user_model: formData.userModel,
+          arrival_rate:
+            formData.userModel === "open" ? formData.arrivalRate : null,
+          session_duration:
+            formData.userModel === "open" ? formData.sessionDuration : null,
           target_url: formData.targetUrl,
           auto_run: false,
         };
@@ -604,10 +680,49 @@ end`,
       isLoading.value = true;
       try {
         const testId = `test_${Date.now()}`;
+
+        let dslScript = formData.dslScript;
+        if (formData.userModel === "open") {
+          const lines = dslScript.split("\n");
+          const updatedLines = [];
+          let userModelAdded = false;
+          let arrivalRateAdded = false;
+          let sessionDurationAdded = false;
+
+          for (const line of lines) {
+            if (line.trim().startsWith("user_model:")) {
+              updatedLines.push(`user_model: ${formData.userModel}`);
+              userModelAdded = true;
+            } else if (line.trim().startsWith("arrival_rate:")) {
+              updatedLines.push(`arrival_rate: ${formData.arrivalRate}`);
+              arrivalRateAdded = true;
+            } else if (line.trim().startsWith("session_duration:")) {
+              updatedLines.push(
+                `session_duration: ${formData.sessionDuration}`
+              );
+              sessionDurationAdded = true;
+            } else {
+              updatedLines.push(line);
+            }
+          }
+
+          if (!userModelAdded) {
+            updatedLines.push(`user_model: ${formData.userModel}`);
+          }
+          if (!arrivalRateAdded && formData.userModel === "open") {
+            updatedLines.push(`arrival_rate: ${formData.arrivalRate}`);
+          }
+          if (!sessionDurationAdded && formData.userModel === "open") {
+            updatedLines.push(`session_duration: ${formData.sessionDuration}`);
+          }
+
+          dslScript = updatedLines.join("\n");
+        }
+
         const testData = {
           test_id: testId,
           target_url: formData.targetUrl,
-          dsl_script: formData.dslScript,
+          dsl_script: dslScript,
           swagger_docs: formData.swaggerDocs || null,
           auth_credentials: formData.authCredentials,
         };

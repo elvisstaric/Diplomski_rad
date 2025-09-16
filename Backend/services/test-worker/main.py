@@ -79,8 +79,11 @@ async def run_performance_test(test_task: Dict[str, Any]):
         num_users = dsl_data.get("num_users", 1)
         test_duration = dsl_data.get("test_duration", 60)
         workload_pattern = dsl_data.get("workload_pattern", "steady")
+        user_model = dsl_data.get("user_model", "closed")
+        arrival_rate = dsl_data.get("arrival_rate")
+        session_duration = dsl_data.get("session_duration")
         
-        logger.info(f"Running test {test_id} for {num_users} users")
+        logger.info(f"Running test {test_id} for {num_users} users with {user_model} model")
         
         start_time = datetime.now()
         total_requests = 0
@@ -90,25 +93,31 @@ async def run_performance_test(test_task: Dict[str, Any]):
         error_details = []
         
         pattern_config = dsl_data.get("pattern_config", {})
-        workload_generator = WorkloadGenerator(workload_pattern, num_users, test_duration, pattern_config)
+        workload_generator = WorkloadGenerator(
+            workload_pattern, num_users, test_duration, pattern_config,
+            user_model, arrival_rate, session_duration
+        )
         
         progress_update_interval = max(1, test_duration // 10) 
         
         
-        tasks = []
-        for user_id in range(num_users):
-            task = simulate_user_journey(
-                user_id, target_url, test_task, workload_generator, start_time
+        if user_model == "open":
+            results = await run_open_model_test(test_task, dsl_data, workload_generator, start_time)
+        else:
+            tasks = []
+            for user_id in range(num_users):
+                task = simulate_user_journey(
+                    user_id, target_url, test_task, workload_generator, start_time
+                )
+                tasks.append(task)
+            
+            progress_task = asyncio.create_task(
+                track_progress(test_id, start_time, test_duration, progress_update_interval)
             )
-            tasks.append(task)
-        
-        progress_task = asyncio.create_task(
-            track_progress(test_id, start_time, test_duration, progress_update_interval)
-        )
-        
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        progress_task.cancel()
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            progress_task.cancel()
         
         for result in results:
             if isinstance(result, dict):
@@ -145,6 +154,110 @@ async def run_performance_test(test_task: Dict[str, Any]):
     except Exception as e:
         logger.error(f"Test {test_id} failed: {e}")
         await send_error_to_coordinator(test_task["test_id"], str(e))
+
+async def run_open_model_test(test_task: Dict[str, Any], dsl_data: Dict[str, Any], 
+                             workload_generator: 'WorkloadGenerator', start_time: datetime):
+    active_users = []
+    test_duration = dsl_data.get("test_duration", 60)
+    target_url = test_task["target_url"]
+    arrival_rate = dsl_data.get("arrival_rate", 1.0)
+    
+    logger.info(f"Starting open model test:")
+    logger.info(f"  - Test duration: {test_duration}s")
+    logger.info(f"  - Arrival rate: {arrival_rate} users/second")
+    logger.info(f"  - Expected timeout: {test_duration + 60}s")
+    
+    progress_update_interval = max(1, test_duration // 10)
+    progress_task = asyncio.create_task(
+        track_progress(test_task["test_id"], start_time, test_duration, progress_update_interval)
+    )
+    
+    try:
+        while True:
+            elapsed = (datetime.now() - start_time).total_seconds()
+            if elapsed >= test_duration:
+                break
+            
+            arrival_probability = min(arrival_rate * 0.1, 1.0)
+            if random.random() < arrival_probability:  
+                user_id = len(active_users)
+                session_duration = workload_generator.get_session_duration()
+                task = asyncio.create_task(
+                    simulate_user_session(user_id, target_url, test_task, workload_generator, 
+                                        start_time, session_duration)
+                )
+                active_users.append(task)
+                logger.info(f"Started user session {user_id} (arrival_rate: {arrival_rate}, session_duration: {session_duration:.1f}s, elapsed: {elapsed:.1f}s)")
+            
+            active_users = [task for task in active_users if not task.done()]
+            
+            await asyncio.sleep(0.1) 
+        
+        if active_users:
+            logger.info(f"Test duration reached, but {len(active_users)} active sessions still running")
+            logger.info("Waiting for active sessions to complete...")
+            await asyncio.gather(*active_users, return_exceptions=True)
+            logger.info("All active sessions completed")
+    
+    finally:
+        progress_task.cancel()
+    
+    results = []
+    for task in active_users:
+        if task.done() and not task.cancelled():
+            try:
+                result = task.result()
+                if isinstance(result, dict):
+                    results.append(result)
+            except Exception as e:
+                logger.error(f"Error in user session: {e}")
+    
+    return results
+
+async def simulate_user_session(user_id: int, target_url: str, test_task: Dict[str, Any], 
+                              workload_generator: 'WorkloadGenerator', start_time: datetime, 
+                              session_duration: float):
+    requests = [0]
+    successful = [0]
+    failed = [0]
+    latencies = []
+    errors = []
+    
+    dsl_script = test_task.get("dsl_script", "")
+    dsl_data = parse_dsl(dsl_script)
+    steps = dsl_data.get("steps", [])
+    user_journey = dsl_data.get("user_journey", [])
+    
+    session_start = datetime.now()
+    
+    async with aiohttp.ClientSession() as session:
+        while True:
+            elapsed_session = (datetime.now() - session_start).total_seconds()
+            if elapsed_session >= session_duration:
+                break
+            
+            elapsed_test = (datetime.now() - start_time).total_seconds()
+            workload_generator.update_time(elapsed_test)
+            
+            delay = workload_generator.get_next_delay()
+            if delay > 0:
+                await asyncio.sleep(delay)
+            
+            if user_journey:
+                await execute_user_journey(session, target_url, user_journey, 
+                                         requests, successful, failed, latencies, errors)
+            else:
+                endpoint = random.choice(steps)
+                await execute_single_step(session, target_url, endpoint, 
+                                        requests, successful, failed, latencies, errors)
+    
+    return {
+        "requests": requests[0],
+        "successful": successful[0],
+        "failed": failed[0],
+        "latencies": latencies,
+        "errors": errors
+    }
 
 async def simulate_user_journey(user_id: int, target_url: str, test_task: Dict[str, Any], 
                                workload_generator: 'WorkloadGenerator', start_time: datetime):

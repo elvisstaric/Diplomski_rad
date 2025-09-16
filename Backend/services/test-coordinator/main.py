@@ -69,14 +69,17 @@ async def check_test_timeouts():
             
             test_status.progress = calculate_test_progress(test_status)
             
-            if elapsed > test_status.test_duration:
+            timeout_buffer = 600
+            timeout_threshold = test_status.test_duration + timeout_buffer
+            
+            if elapsed > timeout_threshold:
                 test_status.status = "failed"
                 test_status.end_time = current_time
-                test_status.error = "Test timeout"
+                test_status.error = f"Test timeout (exceeded {timeout_threshold}s)"
                 test_status.progress = 100.0
                 
                 failed_tests[test_id] = active_tests.pop(test_id)
-                logger.info(f"Test {test_id} timed out and moved to failed_tests")
+                logger.info(f"Test {test_id} timed out after {elapsed:.1f}s and moved to failed_tests")
 
 @app.post("/tests")
 async def create_test(test_request: TestRequest):
@@ -297,10 +300,13 @@ async def generate_dsl(request: GenerateDSLRequest):
             )
         
         result = await llm_service.generate_dsl_from_description(
-            request.description, 
-            request.swagger_docs,  
-            request.api_endpoints
-        )
+                    request.description,
+                    request.swagger_docs,
+                    request.api_endpoints,
+                    request.user_model,
+                    request.arrival_rate,
+                    request.session_duration
+                )
         
         if result["status"] == "error":
             raise HTTPException(

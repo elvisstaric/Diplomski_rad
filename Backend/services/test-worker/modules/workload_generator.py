@@ -4,12 +4,16 @@ from typing import Dict, Any
 
 class WorkloadGenerator:
     
-    def __init__(self, pattern: str, num_users: int, duration: int, pattern_config: Dict[str, Any] = None):
+    def __init__(self, pattern: str, num_users: int, duration: int, pattern_config: Dict[str, Any] = None, 
+                 user_model: str = "closed", arrival_rate: float = None, session_duration: float = None):
         self.pattern = pattern
         self.num_users = num_users
         self.duration = duration
         self.current_time = 0
         self.pattern_config = pattern_config or {}
+        self.user_model = user_model
+        self.arrival_rate = arrival_rate
+        self.session_duration = session_duration
         
         self.spike_start_time = 0
         self.spike_active = False
@@ -87,3 +91,15 @@ class WorkloadGenerator:
     
     def update_time(self, elapsed_time: float):
         self.current_time = elapsed_time
+    
+    def get_next_user_arrival(self):
+        if self.user_model == "open" and self.arrival_rate:
+            return random.expovariate(self.arrival_rate)
+        return None
+    
+    def get_session_duration(self):
+        if self.user_model == "open" and self.session_duration:
+            max_session_duration = self.session_duration * 3 
+            session_duration = random.expovariate(1.0 / self.session_duration)
+            return min(session_duration, max_session_duration)
+        return self.duration

@@ -19,7 +19,7 @@ class LLMService:
             self.client = AsyncOpenAI(api_key=api_key)
         self.model = "gpt-4o"
     
-    async def generate_dsl_from_description(self, description: str, swagger_docs: str = None, api_endpoints: List[str] = None) -> Dict[str, Any]:
+    async def generate_dsl_from_description(self, description: str, swagger_docs: str = None, api_endpoints: List[str] = None, user_model: str = "closed", arrival_rate: float = None, session_duration: float = None) -> Dict[str, Any]:
         if not self.client:
             return {
                 "dsl_script": "",
@@ -35,6 +35,22 @@ class LLMService:
             if api_endpoints:
                 api_info += f"\n\nAvailable API endpoints:\n" + "\n".join(api_endpoints)
             
+            user_model_info = ""
+            if user_model == "open":
+                user_model_info = f"""
+            User Model: Open Model
+            - Use user_model: open
+            - Set arrival_rate: {arrival_rate or 2.5} (users per second)
+            - Set session_duration: {session_duration or 45} (average session duration in seconds)
+            - Set users: 0 (not relevant for open model)
+            """
+            else:
+                user_model_info = f"""
+            User Model: Closed Model
+            - Use user_model: closed (or omit for default)
+            - Set users: [appropriate number based on scenario]
+            """
+            
             user_prompt = f"""
             Generate a DSL script for the following user journey description:
             
@@ -42,11 +58,14 @@ class LLMService:
             
             {api_info}
             
+            {user_model_info}
+            
             Generate a complete DSL script that includes:
-            1. Basic parameters (users, duration, pattern)
+            1. Basic parameters (users, duration, pattern, user_model)
             2. User journey definitions with appropriate HTTP methods
             3. Realistic API endpoints and payloads (use available endpoints)
             4. Appropriate workload pattern for the described scenario
+            5. User model configuration (open/closed with appropriate parameters)
             
             Respond ONLY with the DSL script, without additional explanations.
             """
@@ -155,23 +174,45 @@ class LLMService:
         3. Include realistic payloads for POST/PUT requests
         4. Use suitable workload patterns (steady, burst, ramp_up, daily_cycle, spike, gradual_ramp)
         5. Define reasonable numbers of users and test duration
+        6. Choose appropriate user model (closed or open)
         
         DSL format:
-        - users: [number] - number of simulated users
+        - users: [number] - number of simulated users (0 for open model)
         - duration: [number] - duration in seconds
         - pattern: [pattern_name] - workload pattern
+        - user_model: [closed|open] - user model type
+        - arrival_rate: [number] - users per second (only for open model)
+        - session_duration: [number] - average session duration in seconds (only for open model)
         - journey: [name] - user journey name
         - repeat: [number] - number of repetitions (optional)
         - - [METHOD] [path] [payload] - step in journey
         - end - end of journey
         
-        Example:
+        Examples:
+        
+        Closed Model:
         users: 10
         duration: 300
         pattern: steady
+        user_model: closed
         
         journey: ecommerce_flow
         repeat: 2
+        - GET /api/products
+        - POST /api/cart {"product_id": 123, "quantity": 1}
+        - GET /api/cart
+        - POST /api/checkout {"payment_method": "credit_card"}
+        end
+        
+        Open Model:
+        users: 0
+        duration: 300
+        pattern: steady
+        user_model: open
+        arrival_rate: 2.5
+        session_duration: 45
+        
+        journey: ecommerce_flow
         - GET /api/products
         - POST /api/cart {"product_id": 123, "quantity": 1}
         - GET /api/cart
@@ -189,7 +230,18 @@ class LLMService:
         - Better workload patterns
         - Optimizing number of users and duration
         - Adding validation steps
+        - Choosing appropriate user model (closed vs open)
+        - Optimizing arrival rates and session durations for open model
+        
+        Available DSL parameters:
+        - users: [number] - number of simulated users (0 for open model)
+        - duration: [number] - duration in seconds
+        - pattern: [pattern_name] - workload pattern (steady, burst, ramp_up, daily_cycle, spike, gradual_ramp)
+        - user_model: [closed|open] - user model type
+        - arrival_rate: [number] - users per second (only for open model)
+        - session_duration: [number] - average session duration in seconds (only for open model)
         
         Always maintain the basic DSL structure and add only meaningful improvements.
+        Consider switching between closed and open models based on the optimization goal.
         """
 llm_service = LLMService()
