@@ -82,6 +82,10 @@ async def run_performance_test(test_task: Dict[str, Any]):
         user_model = dsl_data.get("user_model", "closed")
         arrival_rate = dsl_data.get("arrival_rate")
         session_duration = dsl_data.get("session_duration")
+     
+        auth_type = dsl_data.get("auth_type", "none")
+        auth_credentials = test_task.get("auth_credentials", {})
+        auth_endpoint=auth_credentials.get("loginEndpoint")
         
         logger.info(f"Running test {test_id} for {num_users} users with {user_model} model")
         
@@ -102,12 +106,14 @@ async def run_performance_test(test_task: Dict[str, Any]):
         
         
         if user_model == "open":
-            results = await run_open_model_test(test_task, dsl_data, workload_generator, start_time)
+            results = await run_open_model_test(test_task, dsl_data, workload_generator, start_time, 
+                                              auth_type, auth_credentials, auth_endpoint)
         else:
             tasks = []
             for user_id in range(num_users):
                 task = simulate_user_journey(
-                    user_id, target_url, test_task, workload_generator, start_time
+                    user_id, target_url, test_task, workload_generator, start_time,
+                    auth_type, auth_credentials, auth_endpoint
                 )
                 tasks.append(task)
             
@@ -156,7 +162,8 @@ async def run_performance_test(test_task: Dict[str, Any]):
         await send_error_to_coordinator(test_task["test_id"], str(e))
 
 async def run_open_model_test(test_task: Dict[str, Any], dsl_data: Dict[str, Any], 
-                             workload_generator: 'WorkloadGenerator', start_time: datetime):
+                             workload_generator: 'WorkloadGenerator', start_time: datetime,
+                             auth_type: str = "none", auth_credentials: Dict = None, auth_endpoint: str = None):
     active_users = []
     test_duration = dsl_data.get("test_duration", 60)
     target_url = test_task["target_url"]
@@ -184,7 +191,7 @@ async def run_open_model_test(test_task: Dict[str, Any], dsl_data: Dict[str, Any
                 session_duration = workload_generator.get_session_duration()
                 task = asyncio.create_task(
                     simulate_user_session(user_id, target_url, test_task, workload_generator, 
-                                        start_time, session_duration)
+                                        start_time, session_duration, auth_type, auth_credentials, auth_endpoint)
                 )
                 active_users.append(task)
                 logger.info(f"Started user session {user_id} (arrival_rate: {arrival_rate}, session_duration: {session_duration:.1f}s, elapsed: {elapsed:.1f}s)")
@@ -216,7 +223,8 @@ async def run_open_model_test(test_task: Dict[str, Any], dsl_data: Dict[str, Any
 
 async def simulate_user_session(user_id: int, target_url: str, test_task: Dict[str, Any], 
                               workload_generator: 'WorkloadGenerator', start_time: datetime, 
-                              session_duration: float):
+                              session_duration: float, auth_type: str = "none", 
+                              auth_credentials: Dict = None, auth_endpoint: str = None):
     requests = [0]
     successful = [0]
     failed = [0]
@@ -245,7 +253,8 @@ async def simulate_user_session(user_id: int, target_url: str, test_task: Dict[s
             
             if user_journey:
                 await execute_user_journey(session, target_url, user_journey, 
-                                         requests, successful, failed, latencies, errors)
+                                         requests, successful, failed, latencies, errors,
+                                         auth_type, auth_credentials, auth_endpoint)
             else:
                 endpoint = random.choice(steps)
                 await execute_single_step(session, target_url, endpoint, 
@@ -260,7 +269,8 @@ async def simulate_user_session(user_id: int, target_url: str, test_task: Dict[s
     }
 
 async def simulate_user_journey(user_id: int, target_url: str, test_task: Dict[str, Any], 
-                               workload_generator: 'WorkloadGenerator', start_time: datetime):
+                               workload_generator: 'WorkloadGenerator', start_time: datetime,
+                               auth_type: str = "none", auth_credentials: Dict = None, auth_endpoint: str = None):
     requests = [0]  
     successful = [0]  
     failed = [0]  
@@ -286,7 +296,8 @@ async def simulate_user_journey(user_id: int, target_url: str, test_task: Dict[s
 
             if user_journey:
                 await execute_user_journey(session, target_url, user_journey, 
-                                         requests, successful, failed, latencies, errors)
+                                         requests, successful, failed, latencies, errors,
+                                         auth_type, auth_credentials, auth_endpoint)
             else:
                 endpoint = random.choice(steps)
                 await execute_single_step(session, target_url, endpoint, 

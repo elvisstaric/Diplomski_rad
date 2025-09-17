@@ -214,29 +214,132 @@
           </div>
         </div>
 
-        <!-- Auth Credentials -->
+        <!-- Authentication Configuration -->
         <div>
-          <label class="form-label"
-            >Authentication Credentials (Optional)</label
+          <label class="form-label">Authentication Configuration</label>
+
+          <!-- Auth Type Selection -->
+          <div class="mb-4">
+            <label class="form-label">Authentication Type</label>
+            <div class="space-y-3">
+              <label class="flex items-center">
+                <input
+                  v-model="formData.authType"
+                  type="radio"
+                  value="none"
+                  class="mr-3"
+                />
+                <span>No Authentication</span>
+              </label>
+              <label class="flex items-center">
+                <input
+                  v-model="formData.authType"
+                  type="radio"
+                  value="basic"
+                  class="mr-3"
+                />
+                <span>Basic Authentication</span>
+              </label>
+              <label class="flex items-center">
+                <input
+                  v-model="formData.authType"
+                  type="radio"
+                  value="bearer"
+                  class="mr-3"
+                />
+                <span>Bearer Token</span>
+              </label>
+              <label class="flex items-center">
+                <input
+                  v-model="formData.authType"
+                  type="radio"
+                  value="session"
+                  class="mr-3"
+                />
+                <span>Session-based (Login)</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Auth Credentials - shown only when needed -->
+          <div
+            v-if="formData.authType !== 'none'"
+            class="space-y-4 p-4 bg-blue-50 rounded-lg"
           >
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="text-sm text-gray-600">Username</label>
+            <h3 class="font-medium text-gray-900">
+              Authentication Credentials
+            </h3>
+
+            <!-- Basic Auth -->
+            <div
+              v-if="formData.authType === 'basic'"
+              class="grid grid-cols-1 md:grid-cols-2 gap-4"
+            >
+              <div>
+                <label class="form-label">Username</label>
+                <input
+                  v-model="formData.authCredentials.username"
+                  type="text"
+                  class="form-input"
+                  placeholder="username"
+                />
+              </div>
+              <div>
+                <label class="form-label">Password</label>
+                <input
+                  v-model="formData.authCredentials.password"
+                  type="password"
+                  class="form-input"
+                  placeholder="password"
+                />
+              </div>
+            </div>
+
+            <!-- Bearer Token -->
+            <div v-if="formData.authType === 'bearer'">
+              <label class="form-label">Bearer Token</label>
               <input
-                v-model="formData.authCredentials.username"
+                v-model="formData.authCredentials.token"
                 type="text"
                 class="form-input"
-                placeholder="username"
+                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
               />
             </div>
-            <div>
-              <label class="text-sm text-gray-600">Password</label>
-              <input
-                v-model="formData.authCredentials.password"
-                type="password"
-                class="form-input"
-                placeholder="password"
-              />
+
+            <!-- Session-based -->
+            <div v-if="formData.authType === 'session'" class="space-y-4">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="form-label">Username</label>
+                  <input
+                    v-model="formData.authCredentials.username"
+                    type="text"
+                    class="form-input"
+                    placeholder="username"
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Password</label>
+                  <input
+                    v-model="formData.authCredentials.password"
+                    type="password"
+                    class="form-input"
+                    placeholder="password"
+                  />
+                </div>
+              </div>
+              <div>
+                <label class="form-label">Login Endpoint (Optional)</label>
+                <input
+                  v-model="formData.authCredentials.loginEndpoint"
+                  type="text"
+                  class="form-input"
+                  placeholder="/api/login"
+                />
+                <p class="text-sm text-gray-500 mt-1">
+                  Leave empty for auto-detection (/api/login)
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -503,14 +606,18 @@ export default {
 duration: 300
 pattern: steady
 user_model: closed
+auth_type: none
 
 journey: test_flow
 - GET /api/test
 end`,
       optimizationInstructions: "",
+      authType: "none",
       authCredentials: {
         username: "",
         password: "",
+        token: "",
+        loginEndpoint: "",
       },
     });
 
@@ -557,7 +664,6 @@ end`,
         return;
       }
 
-      // First check pattern locally
       const patternCheck = validatePattern(formData.dslScript);
       if (!patternCheck.isValid) {
         alert(`Pattern validation failed:\n${patternCheck.message}`);
@@ -724,6 +830,7 @@ end`,
           target_url: formData.targetUrl,
           dsl_script: dslScript,
           swagger_docs: formData.swaggerDocs || null,
+          auth_type: formData.authType,
           auth_credentials: formData.authCredentials,
         };
 

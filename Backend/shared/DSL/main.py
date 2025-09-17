@@ -11,6 +11,8 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
             "user_model": "closed",
             "arrival_rate": None,
             "session_duration": None,
+            "auth_type": "none",
+            "auth_endpoint": None,
             "steps": [],
             "user_journey": []
         }
@@ -23,6 +25,8 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
     user_model = "closed"
     arrival_rate = None
     session_duration = None
+    auth_type = "none"
+    auth_endpoint = None
     pattern_config = {}
     current_journey_step = None
 
@@ -62,6 +66,12 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
                 session_duration = float(line.split(":")[1].strip())
             except (ValueError, IndexError):
                 session_duration = None
+        elif line.startswith("auth_type:"):
+            auth_type_value = line.split(":")[1].strip()
+            if auth_type_value in ["none", "basic", "bearer", "session"]:
+                auth_type = auth_type_value
+        elif line.startswith("auth_endpoint:"):
+            auth_endpoint = line.split(":", 1)[1].strip()
         elif line.startswith("peak_hours:"):
             try:
                 hours_str = line.split(":", 1)[1].strip()
@@ -164,6 +174,8 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
         "user_model": user_model,
         "arrival_rate": arrival_rate,
         "session_duration": session_duration,
+        "auth_type": auth_type,
+        "auth_endpoint": auth_endpoint,
         "pattern_config": pattern_config,
         "steps": steps,
         "user_journey": user_journey

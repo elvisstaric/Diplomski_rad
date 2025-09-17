@@ -10,6 +10,7 @@ class TestRequest(BaseModel):
     dsl_script: str = Field(..., description="DSL script")
     swagger_docs: Optional[str] = Field(None, description="Swagger docs (optional)")
     auth_credentials: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Auth credentials")
+    auth_type: Optional[str] = Field("none", description="Auth type: none, basic, bearer, session")
     
 class TestStatus(BaseModel):
     test_id: str = Field(..., description="Test ID")
