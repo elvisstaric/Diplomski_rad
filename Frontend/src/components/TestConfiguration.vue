@@ -608,6 +608,9 @@ pattern: steady
 user_model: closed
 auth_type: none
 
+timeout: 30
+retry_attempts: 3
+
 journey: test_flow
 - GET /api/test
 end`,

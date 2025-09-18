@@ -13,6 +13,8 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
             "session_duration": None,
             "auth_type": "none",
             "auth_endpoint": None,
+            "timeout": 30,
+            "retry_attempts": 3,
             "steps": [],
             "user_journey": []
         }
@@ -27,6 +29,8 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
     session_duration = None
     auth_type = "none"
     auth_endpoint = None
+    timeout = 30
+    retry_attempts = 3
     pattern_config = {}
     current_journey_step = None
 
@@ -72,6 +76,16 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
                 auth_type = auth_type_value
         elif line.startswith("auth_endpoint:"):
             auth_endpoint = line.split(":", 1)[1].strip()
+        elif line.startswith("timeout:"):
+            try:
+                timeout = int(line.split(":")[1].strip())
+            except (ValueError, IndexError):
+                timeout = 30
+        elif line.startswith("retry_attempts:"):
+            try:
+                retry_attempts = int(line.split(":")[1].strip())
+            except (ValueError, IndexError):
+                retry_attempts = 3
         elif line.startswith("peak_hours:"):
             try:
                 hours_str = line.split(":", 1)[1].strip()
@@ -124,7 +138,6 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
                 "name": journey_name,
                 "steps": [],
                 "repeat": 1,
-                "condition": None
             }
             user_journey.append(current_journey_step)
         elif line.startswith("repeat:"):
@@ -134,18 +147,16 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
                     current_journey_step["repeat"] = repeat_count
                 except (ValueError, IndexError):
                     current_journey_step["repeat"] = 1
-        elif line.startswith("if:"):
-            if current_journey_step:
-                condition = line.split(":", 1)[1].strip()
-                current_journey_step["condition"] = condition
         elif line.startswith("end"):
             current_journey_step = None
         elif line.startswith("-"):
-            match = re.match(r"-\s*(\w+)\s+([^\s{]+)\s*(\{.*\})?", line)
+            # Parse step with optional fallback endpoint
+            match = re.match(r"-\s*(\w+)\s+([^\s{]+)\s*(?:(\{.*\})?\s*fallback_endpoint:\s*([^\s]+))?", line)
             if match:
                 method = match.group(1).upper()
                 path = match.group(2)
                 payload_str = match.group(3)
+                fallback_endpoint = match.group(4)
                 
                 payload = None
                 if payload_str:
@@ -159,6 +170,9 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
                     "path": path,
                     "payload": payload
                 }
+                
+                if fallback_endpoint:
+                    step["fallback_endpoint"] = fallback_endpoint
                 
                 steps.append(step)
                 
@@ -176,6 +190,8 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
         "session_duration": session_duration,
         "auth_type": auth_type,
         "auth_endpoint": auth_endpoint,
+        "timeout": timeout,
+        "retry_attempts": retry_attempts,
         "pattern_config": pattern_config,
         "steps": steps,
         "user_journey": user_journey

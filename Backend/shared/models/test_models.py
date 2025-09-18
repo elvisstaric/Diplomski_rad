@@ -40,7 +40,7 @@ class TestResult(BaseModel):
     max_latency: float = Field(..., ge=0.0, description="Max latency")
     min_latency: float = Field(..., ge=0.0, description="Min latency")
     avg_latency: float = Field(..., ge=0.0, description="Avg latency")
-    error_details: List[str] = Field(default_factory=list, description="Error details")
+    error_details: List[Dict[str, Any]] = Field(default_factory=list, description="Error details")
     start_time: datetime = Field(..., description="Test start time")
     end_time: datetime = Field(..., description="Test end time")
 

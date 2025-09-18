@@ -348,15 +348,63 @@
               class="space-y-3"
             >
               <h4 class="font-medium text-red-900">Error Details</h4>
-              <div class="space-y-2 max-h-60 overflow-y-auto">
+              <div class="space-y-3 max-h-60 overflow-y-auto">
                 <div
                   v-for="(error, index) in selectedTest.results.error_details"
                   :key="index"
-                  class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm"
+                  class="p-4 bg-red-50 border border-red-200 rounded-lg"
                 >
-                  <span class="font-mono text-red-800 break-all">{{
-                    error
-                  }}</span>
+                  <!-- Error Header -->
+                  <div class="flex justify-between items-start mb-2">
+                    <div class="flex items-center space-x-2">
+                      <span
+                        :class="getErrorCategoryClass(error.category)"
+                        class="px-2 py-1 text-xs font-medium rounded-full"
+                      >
+                        {{ error.category || "unknown" }}
+                      </span>
+                      <span
+                        :class="getErrorSeverityClass(error.severity)"
+                        class="px-2 py-1 text-xs font-medium rounded-full"
+                      >
+                        {{ error.severity || "low" }}
+                      </span>
+                    </div>
+                    <span class="text-xs text-gray-500">
+                      User {{ error.user_id || "N/A" }}
+                    </span>
+                  </div>
+
+                  <!-- Error Message -->
+                  <div class="text-sm text-red-800 mb-2">
+                    {{ error.error_message || error }}
+                  </div>
+
+                  <!-- Error Metadata -->
+                  <div class="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                    <div>
+                      <span class="font-medium">Endpoint:</span>
+                      <span class="ml-1 font-mono">{{
+                        error.endpoint || "N/A"
+                      }}</span>
+                    </div>
+                    <div>
+                      <span class="font-medium">Attempt:</span>
+                      <span class="ml-1">{{ error.attempt || "N/A" }}</span>
+                    </div>
+                    <div>
+                      <span class="font-medium">Time:</span>
+                      <span class="ml-1">{{
+                        formatErrorTime(error.timestamp)
+                      }}</span>
+                    </div>
+                    <div>
+                      <span class="font-medium">Retry Eligible:</span>
+                      <span class="ml-1">{{
+                        error.retry_eligible ? "Yes" : "No"
+                      }}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -481,6 +529,49 @@ export default {
       }
     };
 
+    const getErrorCategoryClass = (category) => {
+      const baseClasses = "px-2 py-1 text-xs font-medium rounded-full";
+      switch (category) {
+        case "timeout":
+          return `${baseClasses} text-orange-800 bg-orange-200`;
+        case "network":
+          return `${baseClasses} text-purple-800 bg-purple-200`;
+        case "http_error":
+          return `${baseClasses} text-blue-800 bg-blue-200`;
+        case "auth_error":
+          return `${baseClasses} text-red-800 bg-red-200`;
+        case "server_error":
+          return `${baseClasses} text-red-800 bg-red-200`;
+        default:
+          return `${baseClasses} text-gray-800 bg-gray-200`;
+      }
+    };
+
+    const getErrorSeverityClass = (severity) => {
+      const baseClasses = "px-2 py-1 text-xs font-medium rounded-full";
+      switch (severity) {
+        case "low":
+          return `${baseClasses} text-green-800 bg-green-200`;
+        case "medium":
+          return `${baseClasses} text-yellow-800 bg-yellow-200`;
+        case "high":
+          return `${baseClasses} text-orange-800 bg-orange-200`;
+        case "critical":
+          return `${baseClasses} text-red-800 bg-red-200`;
+        default:
+          return `${baseClasses} text-gray-800 bg-gray-200`;
+      }
+    };
+
+    const formatErrorTime = (timestamp) => {
+      if (!timestamp) return "N/A";
+      try {
+        return new Date(timestamp).toLocaleString();
+      } catch (e) {
+        return timestamp;
+      }
+    };
+
     return {
       selectedTest,
       openTestDetails,
@@ -493,6 +584,9 @@ export default {
       calculateDuration,
       getStatusBadgeClass,
       getProgressBarClass,
+      getErrorCategoryClass,
+      getErrorSeverityClass,
+      formatErrorTime,
     };
   },
 };

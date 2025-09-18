@@ -66,6 +66,7 @@ class LLMService:
             3. Realistic API endpoints and payloads (use available endpoints)
             4. Appropriate workload pattern for the described scenario
             5. User model configuration (open/closed with appropriate parameters)
+            6. Resilience configuration (timeout and retry_attempts)
             
             Respond ONLY with the DSL script, without additional explanations.
             """
@@ -183,6 +184,8 @@ class LLMService:
         - user_model: [closed|open] - user model type
         - arrival_rate: [number] - users per second (only for open model)
         - session_duration: [number] - average session duration in seconds (only for open model)
+        - timeout: [number] - request timeout in seconds (default: 30)
+        - retry_attempts: [number] - number of retry attempts for failed requests (default: 3)
         - journey: [name] - user journey name
         - repeat: [number] - number of repetitions (optional)
         - - [METHOD] [path] [payload] - step in journey
@@ -195,6 +198,8 @@ class LLMService:
         duration: 300
         pattern: steady
         user_model: closed
+        timeout: 30
+        retry_attempts: 3
         
         journey: ecommerce_flow
         repeat: 2
@@ -211,6 +216,8 @@ class LLMService:
         user_model: open
         arrival_rate: 2.5
         session_duration: 45
+        timeout: 30
+        retry_attempts: 3
         
         journey: ecommerce_flow
         - GET /api/products
@@ -240,6 +247,8 @@ class LLMService:
         - user_model: [closed|open] - user model type
         - arrival_rate: [number] - users per second (only for open model)
         - session_duration: [number] - average session duration in seconds (only for open model)
+        - timeout: [number] - request timeout in seconds (default: 30)
+        - retry_attempts: [number] - number of retry attempts for failed requests (default: 3)
         
         Always maintain the basic DSL structure and add only meaningful improvements.
         Consider switching between closed and open models based on the optimization goal.
