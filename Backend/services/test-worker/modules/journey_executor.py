@@ -43,8 +43,7 @@ def categorize_error(exception: Exception, status_code: int = None):
 
 def create_error_record(category: ErrorCategory, severity: ErrorSeverity, 
                        endpoint: str, user_id: int, attempt: int, 
-                       error_msg: str, timestamp: datetime) -> Dict[str, Any]:
-    """Create detailed error record"""
+                       error_msg: str, timestamp: datetime) :
     return {
         "timestamp": timestamp.isoformat(),
         "category": category.value,
@@ -64,7 +63,6 @@ class DegradationStrategy(Enum):
 
 def determine_degradation_strategy(category: ErrorCategory, severity: ErrorSeverity, 
                                  attempt: int, max_attempts: int) -> DegradationStrategy:
-    """Determine graceful degradation strategy based on error"""
     if attempt < max_attempts:
         return DegradationStrategy.CONTINUE_JOURNEY
     
@@ -80,12 +78,10 @@ def determine_degradation_strategy(category: ErrorCategory, severity: ErrorSever
 async def execute_with_graceful_degradation(session, target_url: str, endpoint: Dict, 
                                            requests, successful, failed, latencies, errors, 
                                            auth=None, timeout=30, retry_attempts=3, user_id=0):
-    """Execute step with graceful degradation strategies"""
     method = endpoint.get("method", "GET")
     url = f"{target_url}{endpoint.get('path', '/')}"
     fallback_endpoint = endpoint.get("fallback_endpoint")
     
-    print(f"DEBUG: Executing step - URL: {url}, Fallback: {fallback_endpoint}")
     
     for attempt in range(retry_attempts + 1):
         try:
@@ -218,14 +214,12 @@ async def execute_user_journey(session, target_url: str, user_journey: List[Dict
                 elif strategy == DegradationStrategy.SKIP_STEP:
                     logger.info(f"Skipping step {step.get('path', 'unknown')} for user {user_id}")
                     continue
-                # CONTINUE_JOURNEY and FALLBACK_ENDPOINT both continue to next step
 
 async def execute_single_step(session, target_url: str, endpoint: Dict, 
                              requests, successful, failed, latencies, errors, auth=None, timeout=30, retry_attempts=3, user_id=0):
     method = endpoint.get("method", "GET")
     url = f"{target_url}{endpoint.get('path', '/')}"
     
-    # Retry logic
     for attempt in range(retry_attempts + 1):
         try:
             request_start = time.time()
@@ -237,7 +231,6 @@ async def execute_single_step(session, target_url: str, endpoint: Dict,
                 else:  
                     request_params['auth'] = auth
             
-            # Set timeout
             timeout_config = aiohttp.ClientTimeout(total=timeout)
             request_params['timeout'] = timeout_config
            

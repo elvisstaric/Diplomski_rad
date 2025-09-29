@@ -253,4 +253,152 @@ class LLMService:
         Always maintain the basic DSL structure and add only meaningful improvements.
         Consider switching between closed and open models based on the optimization goal.
         """
+    
+    async def generate_detailed_report(self, analysis_data: Dict[str, Any]):
+        
+        if not self.client:
+            return "LLM service not available - cannot generate detailed report"
+        
+        try:
+            system_prompt = self.get_report_system_prompt()
+            user_prompt = self.format_analysis_data_for_report(analysis_data)
+            
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3,
+                max_tokens=4000
+            )
+            
+            return response.choices[0].message.content.strip()
+            
+        except Exception as e:
+            logger.error(f"Error generating detailed report: {e}")
+            return f"Error generating report: {str(e)}"
+    
+    def get_report_system_prompt(self):
+        return """
+        You are an expert in web application performance analysis and generating detailed performance testing reports.
+        
+        Your task is to generate a professional report that includes:
+        
+        1. **Test Summary Report** - basic test statistics
+        2. **Problem Detection** - detailed analysis of problems per endpoint with temporal context
+        3. **Performance Insights** - insights into performance and causal relationships
+        4. **Recommended Corrective Actions** - specific technical interventions
+        
+        Report structure:
+        - Use clear headings and subheadings
+        - Include specific numbers and percentages
+        - Identify temporal patterns in errors
+        - Explain possible causes of problems
+        - Provide concrete, actionable recommendations
+        
+        Style:
+        - Professional and technical
+        - Clear and concise
+        - Focused on actions that can improve performance
+        - Use bullet points for easier reading
+        """
+    
+    def format_analysis_data_for_report(self, analysis_data: Dict[str, Any]) -> str:
+        """Format analysis data for LLM report generation"""
+        test_summary = analysis_data.get("test_summary", {})
+        endpoint_stats = analysis_data.get("endpoint_stats", {})
+        error_patterns = analysis_data.get("error_patterns", [])
+        performance_insights = analysis_data.get("performance_insights", [])
+        recommendations = analysis_data.get("recommendations", [])
+        
+        formatted_data = f"""
+        Analyze the following test data and generate a detailed report:
+        
+        **TEST SUMMARY:**
+        - Test ID: {analysis_data.get('test_id', 'N/A')}
+        - Test Duration: {test_summary.get('duration', 0)} seconds
+        - Total Requests: {test_summary.get('total_requests', 0)}
+        - Successful Requests: {test_summary.get('successful_requests', 0)} ({test_summary.get('success_rate', 0)}%)
+        - Failed Requests: {test_summary.get('failed_requests', 0)} ({test_summary.get('failure_rate', 0)}%)
+        - Average Latency: {test_summary.get('avg_latency', 0)}s
+        - Maximum Latency: {test_summary.get('max_latency', 0)}s
+        - Minimum Latency: {test_summary.get('min_latency', 0)}s
+        - Requests per Second: {test_summary.get('requests_per_second', 0)}
+        
+        **ENDPOINT STATISTICS:**
+        """
+        
+        for endpoint, stats in endpoint_stats.items():
+            formatted_data += f"""
+        - {endpoint}:
+          o Total Requests: {stats.get('total_requests', 0)}
+          o Success Rate: {stats.get('success_rate', 0)}%
+          o Failure Rate: {stats.get('failure_rate', 0)}%
+          o Critical Errors: {stats.get('critical_errors', 0)}
+          o Most Common Error Type: {stats.get('most_common_error', ['N/A', 0])[0]} ({stats.get('most_common_error', ['N/A', 0])[1]} times)
+          o Error Categories: {stats.get('error_categories', {})}
+          o Error Severities: {stats.get('error_severities', {})}
+        """
+        
+        formatted_data += f"""
+        
+        **ERROR PATTERN ANALYSIS:**
+        """
+        
+        for pattern in error_patterns:
+            formatted_data += f"""
+        - {pattern.get('category', 'N/A')}:
+          o Error Count: {pattern.get('count', 0)} ({pattern.get('percentage', 0)}% of total errors)
+          o Endpoints: {', '.join(pattern.get('endpoints', []))}
+          o Severity Distribution: {pattern.get('severity_distribution', {})}
+          o Time Distribution: {pattern.get('time_distribution', {})}
+          o Common Error Messages: {pattern.get('common_error_messages', [])}
+        """
+        
+        formatted_data += f"""
+        
+        **PERFORMANCE INSIGHTS:**
+        """
+        for insight in performance_insights:
+            formatted_data += f"• {insight}\n"
+        
+        formatted_data += f"""
+        
+        **RECOMMENDATIONS:**
+        """
+        for recommendation in recommendations:
+            formatted_data += f"• {recommendation}\n"
+        
+        formatted_data += f"""
+        
+        Generate a detailed report following this structure:
+        1. Test Summary Report with title
+        2. Problem detection per endpoint with temporal context
+        3. Performance insights with causal analysis
+        4. Recommended corrective actions
+        
+        Use format similar to this example:
+        "Test Summary Report – 'User Journey: [name]'
+        Test Duration: [X] seconds
+        Number of Concurrent Users: [X]
+        Statistics: ...
+        
+        Problem Detection:
+        1. [endpoint] endpoint
+           o Errors: [X]% of requests returned [error type]
+           o Temporal Context: [description of temporal patterns]
+           o Request Pattern: [description of patterns]
+           o Possible Cause: [cause analysis]
+        
+        Recommended Corrective Actions:
+        • [specific recommendation]
+        • [specific recommendation]
+        
+        Conclusion:
+        [summary of findings and recommendations]"
+        """
+        
+        return formatted_data
+
 llm_service = LLMService()

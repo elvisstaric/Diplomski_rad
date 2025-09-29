@@ -17,8 +17,9 @@ backend_new_dir = os.path.join(current_dir, '..', '..')
 sys.path.insert(0, backend_new_dir)
 
 
-from shared.models import PingRequest, TestRequest, TestStatus, BaseResponse, ErrorResponse, GenerateDSLRequest, OptimizeDSLRequest, DSLResponse
+from shared.models import PingRequest, TestRequest, TestStatus, BaseResponse, ErrorResponse, GenerateDSLRequest, OptimizeDSLRequest, DSLResponse, DetailedTestAnalysis, TestReport
 from shared.DSL.main import parse_dsl
+from shared.analytics.test_analytics import TestAnalytics
 from modules.utils import ping_backend, calculate_test_progress, format_test_results
 from modules.llm_service import llm_service
 
@@ -57,6 +58,9 @@ active_tests: Dict[str, TestStatus] = {}
 completed_tests: Dict[str, TestStatus] = {}
 failed_tests: Dict[str, TestStatus] = {}
 test_results: Dict[str, Dict[str, Any]] = {}
+test_reports: Dict[str, TestReport] = {}
+
+analytics_engine = TestAnalytics()
 
 
 
@@ -474,6 +478,76 @@ async def validate_dsl(dsl_script: str = Body(..., media_type="text/plain")):
             "parsed_data": None,
             "issues": [f"DSL parsing error: {str(e)}"]
         }
+
+@app.post("/tests/{test_id}/detailed-report")
+async def generate_detailed_report(test_id: str):
+    
+    try:
+        
+        if test_id not in completed_tests and test_id not in failed_tests:
+            raise HTTPException(status_code=404, detail="Test not found or not completed/failed")
+        
+        test_status = completed_tests.get(test_id) or failed_tests.get(test_id)
+        
+        if test_id in test_reports:
+            return test_reports[test_id]
+        
+        
+        logger.info(f"Analyzing test data for {test_id}")
+        analysis_data = analytics_engine.analyze_test_data(test_status.results)
+        
+        
+        logger.info(f"Generating LLM report for {test_id}")
+        report_content = await llm_service.generate_detailed_report(analysis_data)
+        
+        
+        detailed_analysis = DetailedTestAnalysis(
+            test_id=test_id,
+            test_summary=analysis_data.get("test_summary", {}),
+            endpoint_stats=analysis_data.get("endpoint_stats", {}),
+            error_patterns=analysis_data.get("error_patterns", []),
+            time_series_data=analysis_data.get("time_series_data", {}),
+            performance_insights=analysis_data.get("performance_insights", []),
+            recommendations=analysis_data.get("recommendations", [])
+        )
+        
+        test_report = TestReport(
+            test_id=test_id,
+            report_content=report_content,
+            analysis_data=detailed_analysis
+        )
+        
+        
+        test_reports[test_id] = test_report
+        
+        logger.info(f"Generated detailed report for {test_id}")
+        return test_report
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating detailed report for {test_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
+
+@app.get("/tests/{test_id}/detailed-report")
+async def get_detailed_report(test_id: str):
+    
+    if test_id not in test_reports:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    return test_reports[test_id]
+
+@app.get("/tests/{test_id}/report-content")
+async def get_report_content(test_id: str):
+    
+    if test_id not in test_reports:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    return {
+        "test_id": test_id,
+        "content": test_reports[test_id].report_content,
+        "generated_at": test_reports[test_id].generated_at.isoformat()
+    }
 
 if __name__ == "__main__":
     import uvicorn

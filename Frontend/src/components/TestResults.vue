@@ -139,6 +139,34 @@
               <div class="text-sm text-red-800">Max Latency</div>
             </div>
           </div>
+
+          <!-- Report Actions -->
+          <div class="flex space-x-3 pt-4 border-t border-gray-200">
+            <button
+              @click="generateDetailedReport(test)"
+              :disabled="isGeneratingReport"
+              class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span v-if="isGeneratingReport">Generating Report...</span>
+              <span v-else>Generate Detailed Report</span>
+            </button>
+
+            <button
+              v-if="test.hasReport"
+              @click="viewReport(test)"
+              class="btn-secondary"
+            >
+              View Report
+            </button>
+
+            <button
+              v-if="test.hasReport"
+              @click="downloadReport(test)"
+              class="btn-secondary"
+            >
+              Download Markdown
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -171,6 +199,37 @@
           class="p-3 bg-red-100 border border-red-300 rounded-lg"
         >
           <p class="text-sm text-red-800">{{ test.error }}</p>
+        </div>
+
+        <!-- Report Actions for Failed Tests -->
+        <div
+          v-if="test.results"
+          class="flex space-x-3 pt-4 border-t border-red-200"
+        >
+          <button
+            @click="generateDetailedReport(test)"
+            :disabled="isGeneratingReport"
+            class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <span v-if="isGeneratingReport">Generating Report...</span>
+            <span v-else>Generate Detailed Report</span>
+          </button>
+
+          <button
+            v-if="test.hasReport"
+            @click="viewReport(test)"
+            class="btn-secondary"
+          >
+            View Report
+          </button>
+
+          <button
+            v-if="test.hasReport"
+            @click="downloadReport(test)"
+            class="btn-secondary"
+          >
+            Download Markdown
+          </button>
         </div>
       </div>
     </div>
@@ -418,11 +477,76 @@
         </div>
       </div>
     </div>
+
+    <!-- Report Modal -->
+    <div
+      v-if="showReportModal"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    >
+      <div
+        class="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden"
+      >
+        <div
+          class="flex justify-between items-center p-4 border-b border-gray-200"
+        >
+          <h3 class="text-lg font-semibold">
+            Detailed Test Report: {{ selectedReportTest?.test_id }}
+          </h3>
+          <div class="flex space-x-2">
+            <button
+              @click="downloadReport(selectedReportTest)"
+              class="btn-secondary text-sm"
+            >
+              Download Markdown
+            </button>
+            <button
+              @click="showReportModal = false"
+              class="text-gray-400 hover:text-gray-600"
+            >
+              <svg
+                class="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                ></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="p-4 overflow-y-auto max-h-[80vh]">
+          <div v-if="isGeneratingReport" class="text-center py-8">
+            <div
+              class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"
+            ></div>
+            <p class="mt-4 text-gray-600">Generating detailed report...</p>
+          </div>
+
+          <div v-else-if="reportContent" class="prose max-w-none">
+            <pre
+              class="whitespace-pre-wrap text-sm font-mono bg-gray-50 p-4 rounded-lg"
+              >{{ reportContent }}</pre
+            >
+          </div>
+
+          <div v-else class="text-center py-8 text-gray-500">
+            <p>No report content available</p>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
 import { computed, ref } from "vue";
+import { testApi } from "../services/api";
 
 export default {
   name: "TestResults",
@@ -439,6 +563,10 @@ export default {
   emits: ["refresh-tests"],
   setup(props) {
     const selectedTest = ref(null);
+    const showReportModal = ref(false);
+    const selectedReportTest = ref(null);
+    const reportContent = ref("");
+    const isGeneratingReport = ref(false);
 
     const openTestDetails = (test) => {
       selectedTest.value = test;
@@ -572,6 +700,83 @@ export default {
       }
     };
 
+    const generateDetailedReport = async (test) => {
+      if (!test || (test.status !== "completed" && test.status !== "failed")) {
+        alert("Report can only be generated for completed or failed tests");
+        return;
+      }
+
+      isGeneratingReport.value = true;
+      selectedReportTest.value = test;
+      showReportModal.value = true;
+      reportContent.value = "";
+
+      try {
+        const response = await testApi.generateDetailedReport(test.test_id);
+        reportContent.value = response.data.report_content;
+
+        // Mark test as having a report
+        test.hasReport = true;
+      } catch (error) {
+        console.error("Error generating report:", error);
+        alert(
+          "Error generating report: " +
+            (error.response?.data?.detail || error.message)
+        );
+        showReportModal.value = false;
+      } finally {
+        isGeneratingReport.value = false;
+      }
+    };
+
+    const viewReport = async (test) => {
+      if (!test.hasReport) {
+        await generateDetailedReport(test);
+        return;
+      }
+
+      try {
+        const response = await testApi.getReportContent(test.test_id);
+        reportContent.value = response.data.content;
+        selectedReportTest.value = test;
+        showReportModal.value = true;
+      } catch (error) {
+        console.error("Error fetching report:", error);
+        alert(
+          "Error fetching report: " +
+            (error.response?.data?.detail || error.message)
+        );
+      }
+    };
+
+    const downloadReport = async (test) => {
+      if (!test) return;
+
+      try {
+        const response = await testApi.getReportContent(test.test_id);
+        const content = response.data.content;
+
+        // Create a markdown file download
+        const blob = new Blob([content], { type: "text/markdown" });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `test-report-${test.test_id}-${
+          new Date().toISOString().split("T")[0]
+        }.md`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error("Error downloading report:", error);
+        alert(
+          "Error downloading report: " +
+            (error.response?.data?.detail || error.message)
+        );
+      }
+    };
+
     return {
       selectedTest,
       openTestDetails,
@@ -587,6 +792,14 @@ export default {
       getErrorCategoryClass,
       getErrorSeverityClass,
       formatErrorTime,
+      // Report functionality
+      showReportModal,
+      selectedReportTest,
+      reportContent,
+      isGeneratingReport,
+      generateDetailedReport,
+      viewReport,
+      downloadReport,
     };
   },
 };

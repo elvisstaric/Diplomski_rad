@@ -56,6 +56,21 @@ class TestResult(BaseModel):
             return 0.0
         return (self.failed_requests / self.total_requests) * 100
 
+class DetailedTestAnalysis(BaseModel):
+    test_id: str = Field(..., description="Test ID")
+    test_summary: Dict[str, Any] = Field(..., description="Basic test statistics")
+    endpoint_stats: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Statistics per endpoint")
+    error_patterns: List[Dict[str, Any]] = Field(default_factory=list, description="Error pattern analysis")
+    time_series_data: Dict[str, List[float]] = Field(default_factory=dict, description="Time series data")
+    performance_insights: List[str] = Field(default_factory=list, description="Performance insights")
+    recommendations: List[str] = Field(default_factory=list, description="Recommendations")
+
+class TestReport(BaseModel):
+    test_id: str = Field(..., description="Test ID")
+    report_content: str = Field(..., description="Generated report content")
+    generated_at: datetime = Field(default_factory=datetime.now, description="Report generation time")
+    analysis_data: DetailedTestAnalysis = Field(..., description="Underlying analysis data")
+
 class GenerateDSLRequest(BaseModel):
     description: str = Field(..., description="Natural language description of the user journey")
     target_domain: Optional[str] = Field(None, description="Target domain (e.g., ecommerce, banking)")

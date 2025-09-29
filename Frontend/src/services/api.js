@@ -26,6 +26,16 @@ export const testApi = {
 
   // Ping backend
   pingBackend: (url) => api.post("/ping", { url }),
+
+  // Generate detailed report
+  generateDetailedReport: (testId) =>
+    api.post(`/tests/${testId}/detailed-report`),
+
+  // Get detailed report
+  getDetailedReport: (testId) => api.get(`/tests/${testId}/detailed-report`),
+
+  // Get report content
+  getReportContent: (testId) => api.get(`/tests/${testId}/report-content`),
 };
 
 // DSL management

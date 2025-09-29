@@ -1,4 +1,4 @@
-from .test_models import PingRequest, TestRequest, TestStatus, TestTask, TestResult, GenerateDSLRequest, OptimizeDSLRequest, DSLResponse
+from .test_models import PingRequest, TestRequest, TestStatus, TestTask, TestResult, GenerateDSLRequest, OptimizeDSLRequest, DSLResponse, DetailedTestAnalysis, TestReport
 from .common_models import BaseResponse, ErrorResponse, HealthCheck, PaginationParams, PaginatedResponse
 
 __all__ = [
@@ -14,5 +14,7 @@ __all__ = [
     "ErrorResponse",
     "HealthCheck",
     "PaginationParams",
-    "PaginatedResponse"
+    "PaginatedResponse",
+    "DetailedTestAnalysis",
+    "TestReport"
 ]
