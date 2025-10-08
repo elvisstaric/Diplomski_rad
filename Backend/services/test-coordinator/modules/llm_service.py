@@ -400,5 +400,148 @@ class LLMService:
         """
         
         return formatted_data
+    
+    async def generate_causal_experiment_variations(self, baseline_dsl: str, experiment_description: str, number_of_tests: int) -> Dict[str, Any]:
+        """Generate DSL variations for causal experiment"""
+        if not self.client:
+            return {
+                "variations": [],
+                "status": "error",
+                "error": "LLM service not available"
+            }
+        
+        try:
+            system_prompt = self.get_causal_experiment_system_prompt()
+            user_prompt = f"""
+            Generate {number_of_tests} DSL variations for causal experiment.
+            
+            Baseline DSL:
+            ```dsl
+            {baseline_dsl}
+            ```
+            
+            Experiment Description: {experiment_description}
+            
+            Generate variations that will help test the hypothesis described above.
+            Each variation should be a complete DSL script.
+            
+            IMPORTANT: Return ONLY valid JSON array format. Do not include any markdown formatting or code blocks.
+            
+            Example format:
+            [
+                {{
+                    "variation_name": "Control Group",
+                    "dsl_script": "users: 10\\nduration: 10\\npattern: steady\\nuser_model: closed\\nauth_type: none\\ntimeout: 30\\nretry_attempts: 3\\njourney: test_flow\\n- GET /api/test",
+                    "description": "Baseline with 10 users"
+                }},
+                {{
+                    "variation_name": "Increased Load",
+                    "dsl_script": "users: 15\\nduration: 10\\npattern: steady\\nuser_model: closed\\nauth_type: none\\ntimeout: 30\\nretry_attempts: 3\\njourney: test_flow\\n- GET /api/test",
+                    "description": "Test with 15 users"
+                }}
+            ]
+            """
+            
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3,
+                max_tokens=4000
+            )
+            
+            result_text = response.choices[0].message.content.strip()
+            
+            # Try to parse JSON response
+            try:
+                import json
+                variations = json.loads(result_text)
+                return {
+                    "variations": variations,
+                    "status": "success",
+                    "model_used": self.model
+                }
+            except json.JSONDecodeError as e:
+                # If JSON parsing fails, try to extract from text
+                variations = self.extract_variations_from_text(result_text)
+                return {
+                    "variations": variations,
+                    "status": "success",
+                    "model_used": self.model
+                }
+            
+        except Exception as e:
+            logger.error(f"Error generating causal experiment variations: {e}")
+            return {
+                "variations": [],
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def get_causal_experiment_system_prompt(self):
+        return """
+        You are an expert in designing causal experiments for performance testing.
+        
+        Your task is to generate DSL variations that will help test a specific hypothesis.
+        
+        Guidelines:
+        1. Create meaningful variations that test the hypothesis
+        2. Include a control group (baseline)
+        3. Vary only the parameters relevant to the hypothesis
+        4. Ensure variations are realistic and testable
+        5. Each variation should be a complete, valid DSL script
+        
+        Common variation patterns:
+        - User load: 0, 5, 10, 20, 50 users
+        - Workload patterns: steady, burst, ramp_up, spike
+        - Duration: 60s, 120s, 300s
+        - Timeout values: 10s, 30s, 60s
+        
+        Always return valid JSON array format.
+        """
+    
+    def extract_variations_from_text(self, text: str) -> List[Dict[str, Any]]:
+        """Extract variations from LLM text response when JSON parsing fails"""
+        variations = []
+        lines = text.split('\n')
+        
+        current_variation = {}
+        current_dsl = []
+        in_dsl_block = False
+        
+        for line in lines:
+            line = line.strip()
+            
+            if line.startswith('"variation_name"'):
+                if current_variation:
+                    current_variation['dsl_script'] = '\n'.join(current_dsl)
+                    variations.append(current_variation)
+                current_variation = {}
+                current_dsl = []
+                in_dsl_block = False
+                
+                # Extract variation name
+                name = line.split(':', 1)[1].strip().strip('"')
+                current_variation['variation_name'] = name
+                
+            elif line.startswith('"description"'):
+                desc = line.split(':', 1)[1].strip().strip('"')
+                current_variation['description'] = desc
+                
+            elif line.startswith('"dsl_script"'):
+                in_dsl_block = True
+                
+            elif in_dsl_block and line and not line.startswith('"'):
+                current_dsl.append(line)
+        
+        # Add last variation
+        if current_variation:
+            current_variation['dsl_script'] = '\n'.join(current_dsl)
+            variations.append(current_variation)
+        
+        return variations
+    
 
 llm_service = LLMService()

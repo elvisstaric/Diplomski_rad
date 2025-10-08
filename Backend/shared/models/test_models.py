@@ -21,6 +21,9 @@ class TestStatus(BaseModel):
     test_duration: Optional[int] = Field(None, description="Test duration in seconds")
     results: Dict[str, Any] = Field(default_factory=dict, description="Test results")
     error: Optional[str] = Field(None, description="Test error")
+    target_url: Optional[str] = Field(None, description="Target URL")
+    dsl_script: Optional[str] = Field(None, description="DSL script")
+    auth_credentials: Dict[str, Any] = Field(default_factory=dict, description="Auth credentials")
 
 class TestTask(BaseModel):
     test_id: str = Field(..., description="Test ID")
@@ -70,6 +73,23 @@ class TestReport(BaseModel):
     report_content: str = Field(..., description="Generated report content")
     generated_at: datetime = Field(default_factory=datetime.now, description="Report generation time")
     analysis_data: DetailedTestAnalysis = Field(..., description="Underlying analysis data")
+
+class CausalExperimentRequest(BaseModel):
+    baseline_dsl: str = Field(..., description="Baseline DSL script")
+    experiment_description: str = Field(..., description="Description of what to test")
+    number_of_tests: int = Field(..., ge=2, le=10, description="Number of test variations to generate")
+    target_url: str = Field(..., description="Target URL for testing")
+    auth_credentials: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Auth credentials")
+
+class CausalExperimentResult(BaseModel):
+    experiment_id: str = Field(..., description="Experiment ID")
+    baseline_dsl: str = Field(..., description="Original baseline DSL")
+    generated_variations: List[Dict[str, Any]] = Field(..., description="Generated DSL variations")
+    test_results: List[Dict[str, Any]] = Field(..., description="Results from all tests")
+    causal_analysis: str = Field(..., description="Causal inference analysis report")
+    causal_results: Dict[str, Any] = Field(default_factory=dict, description="Raw DoWhy causal analysis results")
+    dataframe_info: Dict[str, Any] = Field(default_factory=dict, description="DataFrame information")
+    generated_at: datetime = Field(default_factory=datetime.now, description="Experiment completion time")
 
 class GenerateDSLRequest(BaseModel):
     description: str = Field(..., description="Natural language description of the user journey")

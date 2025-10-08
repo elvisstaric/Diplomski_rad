@@ -17,9 +17,10 @@ backend_new_dir = os.path.join(current_dir, '..', '..')
 sys.path.insert(0, backend_new_dir)
 
 
-from shared.models import PingRequest, TestRequest, TestStatus, BaseResponse, ErrorResponse, GenerateDSLRequest, OptimizeDSLRequest, DSLResponse, DetailedTestAnalysis, TestReport
+from shared.models import PingRequest, TestRequest, TestStatus, BaseResponse, ErrorResponse, GenerateDSLRequest, OptimizeDSLRequest, DSLResponse, DetailedTestAnalysis, TestReport, CausalExperimentRequest, CausalExperimentResult
 from shared.DSL.main import parse_dsl
 from shared.analytics.test_analytics import TestAnalytics
+from shared.analytics.causal_analysis import causal_analysis_engine
 from modules.utils import ping_backend, calculate_test_progress, format_test_results
 from modules.llm_service import llm_service
 
@@ -59,6 +60,9 @@ completed_tests: Dict[str, TestStatus] = {}
 failed_tests: Dict[str, TestStatus] = {}
 test_results: Dict[str, Dict[str, Any]] = {}
 test_reports: Dict[str, TestReport] = {}
+
+# Store causal experiments in memory
+causal_experiments: Dict[str, CausalExperimentResult] = {}
 
 analytics_engine = TestAnalytics()
 
@@ -126,7 +130,10 @@ async def create_test(test_request: TestRequest):
         test_id=test_id,
         status="pending",
         progress=0.0,
-        start_time=datetime.now()
+        start_time=datetime.now(),
+        target_url=test_request.target_url,
+        dsl_script=test_request.dsl_script,
+        auth_credentials=test_request.auth_credentials
     )
     active_tests[test_id] = test_status
     
@@ -352,7 +359,10 @@ async def generate_dsl(request: GenerateDSLRequest):
                     test_id=test_id,
                     status="pending",
                     progress=0.0,
-                    start_time=datetime.now()
+                    start_time=datetime.now(),
+                    target_url=test_request.target_url,
+                    dsl_script=test_request.dsl_script,
+                    auth_credentials=test_request.auth_credentials
                 )
                 active_tests[test_id] = test_status
                 
@@ -547,6 +557,294 @@ async def get_report_content(test_id: str):
         "test_id": test_id,
         "content": test_reports[test_id].report_content,
         "generated_at": test_reports[test_id].generated_at.isoformat()
+    }
+
+@app.post("/experiments/causal")
+async def run_causal_experiment(experiment_request: CausalExperimentRequest):
+    """Run a causal inference experiment with multiple test variations"""
+    try:
+        experiment_id = str(uuid.uuid4())
+        logger.info(f"Starting causal experiment {experiment_id}")
+        
+        # Step 1: Generate DSL variations using LLM
+        logger.info(f"Generating DSL variations for experiment {experiment_id}")
+        variations_response = await llm_service.generate_causal_experiment_variations(
+            experiment_request.baseline_dsl,
+            experiment_request.experiment_description,
+            experiment_request.number_of_tests
+        )
+        
+        if variations_response["status"] != "success":
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to generate variations: {variations_response.get('error', 'Unknown error')}"
+            )
+        
+        variations = variations_response["variations"]
+        logger.info(f"Generated {len(variations)} variations for experiment {experiment_id}")
+        
+        # Step 2: Run all test variations
+        test_results = []
+        test_ids = []
+        
+        for i, variation in enumerate(variations):
+            logger.info(f"Running test {i+1}/{len(variations)} for experiment {experiment_id}")
+            
+            # Parse the DSL variation
+            try:
+                parsed_dsl = parse_dsl(variation["dsl_script"])
+            except Exception as e:
+                logger.error(f"Failed to parse DSL for variation {i+1}: {e}")
+                continue
+            
+            # Create test request
+            test_request = TestRequest(
+                test_id=str(uuid.uuid4()),
+                dsl_script=variation["dsl_script"],
+                target_url=experiment_request.target_url,
+                auth_credentials=experiment_request.auth_credentials,
+                parsed_dsl=parsed_dsl
+            )
+            
+            # Run the test using existing create_test logic
+            test_id = test_request.test_id
+            
+            # Ping backend first
+            ping_result = await ping_backend(test_request.target_url)
+            if not ping_result["available"]:
+                logger.error(f"Backend unavailable for test {test_id}: {ping_result['error']}")
+                continue
+            
+            # Parse DSL
+            try:
+                dsl_data = parse_dsl(test_request.dsl_script)
+                if not dsl_data.get("steps"):
+                    logger.error(f"DSL script must contain at least one step for test {test_id}")
+                    continue
+            except Exception as e:
+                logger.error(f"Failed to parse DSL for test {test_id}: {e}")
+                continue
+            
+            # Create test status
+            test_status = TestStatus(
+                test_id=test_id,
+                status="running",
+                progress=0.0,
+                start_time=datetime.now(),
+                target_url=test_request.target_url,
+                dsl_script=test_request.dsl_script,
+                auth_credentials=test_request.auth_credentials,
+                results={}
+            )
+            
+            # Store test status
+            active_tests[test_id] = test_status
+            
+            # Send test to workers via RabbitMQ
+            try:
+                connection = await aio_pika.connect_robust("amqp://localhost")
+                channel = await connection.channel()
+                
+                # Use same format as create_test endpoint
+                test_task = {
+                    "test_id": test_id,
+                    "dsl_script": test_request.dsl_script,
+                    "parsed_dsl": dsl_data,
+                    "target_url": test_request.target_url,
+                    "auth_credentials": test_request.auth_credentials,
+                    "ping_result": {"available": True, "latency_ms": 0}  # Already pinged above
+                }
+                
+                await channel.default_exchange.publish(
+                    aio_pika.Message(
+                        body=json.dumps(test_task).encode(),
+                        delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+                    ),
+                    routing_key="test_tasks"  # Use same routing key as create_test
+                )
+                
+                await connection.close()
+                logger.info(f"Test {test_id} sent to workers")
+                
+            except Exception as e:
+                logger.error(f"Failed to send test {test_id} to workers: {e}")
+                # Mark test as failed
+                test_status.status = "failed"
+                test_status.results = {"error": str(e)}
+                failed_tests[test_id] = test_status
+                del active_tests[test_id]
+                continue
+            
+            test_ids.append(test_id)
+            
+            # Wait for test completion
+            max_wait_time = 60  # 1 minute max per test
+            wait_time = 0
+            while wait_time < max_wait_time:
+                if test_id in completed_tests or test_id in failed_tests:
+                    break
+                await asyncio.sleep(2)  # Check every 2 seconds instead of 5
+                wait_time += 2
+            
+            # Collect results
+            if test_id in completed_tests:
+                test_status = completed_tests[test_id]
+                test_result = {
+                    "variation_name": variation["variation_name"],
+                    "description": variation["description"],
+                    "dsl_script": variation["dsl_script"],
+                    "test_id": test_id,
+                    "status": "completed",
+                    "total_requests": test_status.results.get("total_requests", 0),
+                    "success_rate": test_status.results.get("success_rate", 0),
+                    "avg_latency": test_status.results.get("avg_latency", 0),
+                    "failure_rate": test_status.results.get("failure_rate", 0),
+                    "error_categories": test_status.results.get("error_categories", {}),
+                    "results": test_status.results
+                }
+            elif test_id in failed_tests:
+                test_status = failed_tests[test_id]
+                test_result = {
+                    "variation_name": variation["variation_name"],
+                    "description": variation["description"],
+                    "dsl_script": variation["dsl_script"],
+                    "test_id": test_id,
+                    "status": "failed",
+                    "total_requests": test_status.results.get("total_requests", 0),
+                    "success_rate": test_status.results.get("success_rate", 0),
+                    "avg_latency": test_status.results.get("avg_latency", 0),
+                    "failure_rate": test_status.results.get("failure_rate", 0),
+                    "error_categories": test_status.results.get("error_categories", {}),
+                    "results": test_status.results
+                }
+            else:
+                logger.warning(f"Test {test_id} did not complete within timeout")
+                test_result = {
+                    "variation_name": variation["variation_name"],
+                    "description": variation["description"],
+                    "dsl_script": variation["dsl_script"],
+                    "test_id": test_id,
+                    "status": "timeout",
+                    "total_requests": 0,
+                    "success_rate": 0,
+                    "avg_latency": 0,
+                    "failure_rate": 100,
+                    "error_categories": {},
+                    "results": {}
+                }
+            
+            test_results.append(test_result)
+        
+        # Step 3: Generate causal analysis using DoWhy
+        logger.info(f"Generating causal analysis for experiment {experiment_id}")
+        
+        # Create DataFrame from test results
+        logger.info(f"Creating DataFrame from {len(test_results)} test results")
+        df = causal_analysis_engine.create_experiment_dataframe(test_results)
+        logger.info(f"DataFrame created with shape: {df.shape}, columns: {df.columns.tolist()}")
+        
+        # Perform causal analysis
+        causal_results = causal_analysis_engine.analyze_causal_effect(df, "latency")
+        
+        # Analyze multiple endpoints if available
+        endpoint_analyses = causal_analysis_engine.analyze_multiple_endpoints(df)
+        
+        # Combine results
+        combined_causal_results = {
+            "overall_analysis": causal_results,
+            "endpoint_analyses": endpoint_analyses,
+            "dataframe_info": {
+                "shape": df.shape,
+                "columns": df.columns.tolist(),
+                "treatment_groups": df["treatment"].unique().tolist() if "treatment" in df.columns else []
+            }
+        }
+        
+        # Generate human-readable report
+        causal_analysis = causal_analysis_engine.generate_causal_report(
+            combined_causal_results.get("overall_analysis", {}), 
+            experiment_request.experiment_description
+        )
+        
+        # Step 4: Create experiment result
+        experiment_result = CausalExperimentResult(
+            experiment_id=experiment_id,
+            baseline_dsl=experiment_request.baseline_dsl,
+            generated_variations=variations,
+            test_results=test_results,
+            causal_analysis=causal_analysis,
+            causal_results=combined_causal_results,
+            dataframe_info=combined_causal_results.get("dataframe_info", {})
+        )
+        
+        # Store experiment result
+        causal_experiments[experiment_id] = experiment_result
+        
+        logger.info(f"Completed causal experiment {experiment_id}")
+        return experiment_result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error running causal experiment: {e}")
+        raise HTTPException(status_code=500, detail=f"Error running experiment: {str(e)}")
+
+@app.get("/experiments/{experiment_id}")
+async def get_causal_experiment(experiment_id: str):
+    """Get causal experiment results"""
+    if experiment_id not in causal_experiments:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    
+    return causal_experiments[experiment_id]
+
+@app.post("/experiments/generate-variations")
+async def generate_causal_variations(experiment_request: CausalExperimentRequest):
+    """Generate DSL variations for causal experiment without running tests"""
+    try:
+        logger.info(f"Generating DSL variations for experiment")
+        
+        # Generate DSL variations using LLM
+        variations_response = await llm_service.generate_causal_experiment_variations(
+            experiment_request.baseline_dsl,
+            experiment_request.experiment_description,
+            experiment_request.number_of_tests
+        )
+        
+        if variations_response["status"] != "success":
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to generate variations: {variations_response.get('error', 'Unknown error')}"
+            )
+        
+        variations = variations_response["variations"]
+        logger.info(f"Generated {len(variations)} variations")
+        logger.info(f"Variations content: {variations}")
+        
+        return {
+            "variations": variations,
+            "status": "success",
+            "model_used": variations_response.get("model_used", "unknown")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating variations: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating variations: {str(e)}")
+
+@app.get("/experiments")
+async def list_causal_experiments():
+    """List all causal experiments"""
+    return {
+        "experiments": [
+            {
+                "experiment_id": exp_id,
+                "baseline_dsl": exp.baseline_dsl[:100] + "..." if len(exp.baseline_dsl) > 100 else exp.baseline_dsl,
+                "generated_at": exp.generated_at,
+                "number_of_tests": len(exp.test_results)
+            }
+            for exp_id, exp in causal_experiments.items()
+        ]
     }
 
 if __name__ == "__main__":

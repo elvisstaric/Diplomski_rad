@@ -38,6 +38,23 @@ export const testApi = {
   getReportContent: (testId) => api.get(`/tests/${testId}/report-content`),
 };
 
+// Causal experiment API
+export const causalExperimentApi = {
+  // Run causal experiment
+  runExperiment: (experimentData) =>
+    api.post("/experiments/causal", experimentData, { timeout: 300000 }),
+
+  // Get experiment results
+  getExperiment: (experimentId) => api.get(`/experiments/${experimentId}`),
+
+  // List all experiments
+  listExperiments: () => api.get("/experiments"),
+
+  // Generate variations only (without running tests)
+  generateVariations: (data) =>
+    api.post("/experiments/generate-variations", data, { timeout: 60000 }),
+};
+
 // DSL management
 export const dslApi = {
   // Generate DSL from description

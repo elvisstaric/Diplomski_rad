@@ -147,8 +147,8 @@
               :disabled="isGeneratingReport"
               class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span v-if="isGeneratingReport">Generating Report...</span>
-              <span v-else>Generate Detailed Report</span>
+              <span v-if="isGeneratingReport">Generating Analysis...</span>
+              <span v-else>Generate report</span>
             </button>
 
             <button
@@ -211,8 +211,8 @@
             :disabled="isGeneratingReport"
             class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span v-if="isGeneratingReport">Generating Report...</span>
-            <span v-else>Generate Detailed Report</span>
+            <span v-if="isGeneratingReport">Generating Analysis...</span>
+            <span v-else>Generate report</span>
           </button>
 
           <button
@@ -546,7 +546,7 @@
 
 <script>
 import { computed, ref } from "vue";
-import { testApi } from "../services/api";
+import { testApi, causalExperimentApi } from "../services/api";
 
 export default {
   name: "TestResults",
@@ -702,7 +702,7 @@ export default {
 
     const generateDetailedReport = async (test) => {
       if (!test || (test.status !== "completed" && test.status !== "failed")) {
-        alert("Report can only be generated for completed or failed tests");
+        alert("Analysis can only be generated for completed or failed tests");
         return;
       }
 
@@ -714,66 +714,45 @@ export default {
       try {
         const response = await testApi.generateDetailedReport(test.test_id);
         reportContent.value = response.data.report_content;
-
-        // Mark test as having a report
         test.hasReport = true;
+        test.reportContent = response.data.report_content; // Store in test object for download
       } catch (error) {
-        console.error("Error generating report:", error);
         alert(
-          "Error generating report: " +
+          "Error generating detailed report: " +
             (error.response?.data?.detail || error.message)
         );
-        showReportModal.value = false;
       } finally {
         isGeneratingReport.value = false;
       }
     };
 
-    const viewReport = async (test) => {
-      if (!test.hasReport) {
-        await generateDetailedReport(test);
-        return;
-      }
-
-      try {
-        const response = await testApi.getReportContent(test.test_id);
-        reportContent.value = response.data.content;
+    const viewReport = (test) => {
+      if (test.hasReport) {
         selectedReportTest.value = test;
         showReportModal.value = true;
-      } catch (error) {
-        console.error("Error fetching report:", error);
-        alert(
-          "Error fetching report: " +
-            (error.response?.data?.detail || error.message)
-        );
+        reportContent.value = test.reportContent || "";
       }
     };
 
-    const downloadReport = async (test) => {
-      if (!test) return;
-
-      try {
-        const response = await testApi.getReportContent(test.test_id);
-        const content = response.data.content;
-
-        // Create a markdown file download
-        const blob = new Blob([content], { type: "text/markdown" });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `test-report-${test.test_id}-${
-          new Date().toISOString().split("T")[0]
-        }.md`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-      } catch (error) {
-        console.error("Error downloading report:", error);
-        alert(
-          "Error downloading report: " +
-            (error.response?.data?.detail || error.message)
-        );
+    const downloadReport = (test) => {
+      if (test.hasReport) {
+        // Use reportContent from the modal if available, otherwise use test.reportContent
+        const content = reportContent.value || test.reportContent || "";
+        if (content) {
+          const blob = new Blob([content], { type: "text/markdown" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `test-report-${test.test_id}.md`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } else {
+          alert("No report content available to download");
+        }
+      } else {
+        alert("No report available for this test");
       }
     };
 

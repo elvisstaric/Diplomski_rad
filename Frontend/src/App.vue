@@ -52,6 +52,17 @@
           >
             Test Results
           </button>
+          <button
+            @click="activeTab = 'causal-analysis'"
+            :class="[
+              'py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200',
+              activeTab === 'causal-analysis'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
+            ]"
+          >
+            Causal Analysis
+          </button>
         </nav>
       </div>
 
@@ -71,6 +82,9 @@
           :is-refreshing="isRefreshing"
           @refresh-tests="refreshTests"
         />
+
+        <!-- Causal Analysis Tab -->
+        <CausalAnalysis v-if="activeTab === 'causal-analysis'" :tests="tests" />
       </div>
     </main>
   </div>
@@ -80,6 +94,7 @@
 import { ref, onMounted } from "vue";
 import TestConfiguration from "./components/TestConfiguration.vue";
 import TestResults from "./components/TestResults.vue";
+import CausalAnalysis from "./components/CausalAnalysis.vue";
 import { testApi } from "./services/api";
 
 export default {
@@ -87,6 +102,7 @@ export default {
   components: {
     TestConfiguration,
     TestResults,
+    CausalAnalysis,
   },
   setup() {
     const activeTab = ref("test-config");
