@@ -60,15 +60,17 @@ class LLMService:
             
             {user_model_info}
             
-            Generate a complete DSL script that includes:
-            1. Basic parameters (users, duration, pattern, user_model)
-            2. User journey definitions with appropriate HTTP methods
-            3. Realistic API endpoints and payloads (use available endpoints)
-            4. Appropriate workload pattern for the described scenario
-            5. User model configuration (open/closed with appropriate parameters)
-            6. Resilience configuration (timeout and retry_attempts)
-            
-            Respond ONLY with the DSL script, without additional explanations.
+        Generate a complete DSL script that includes:
+        1. Basic parameters (users, duration, pattern, user_model)
+        2. User journey definitions with appropriate HTTP methods
+        3. Realistic API endpoints and payloads (use available endpoints)
+        4. Appropriate workload pattern for the described scenario
+        5. User model configuration (open/closed with appropriate parameters)
+        6. Resilience configuration (timeout and retry_attempts)
+        
+        IMPORTANT: Use the exact endpoint paths from the Swagger documentation. Do NOT add any prefixes like /api unless they are explicitly defined in the Swagger docs.
+        
+        Respond ONLY with the DSL script, without additional explanations.
             """
             
             response = await self.client.chat.completions.create(
@@ -203,10 +205,10 @@ class LLMService:
         
         journey: ecommerce_flow
         repeat: 2
-        - GET /api/products
-        - POST /api/cart {"product_id": 123, "quantity": 1}
-        - GET /api/cart
-        - POST /api/checkout {"payment_method": "credit_card"}
+        - GET /products
+        - POST /cart {"product_id": 123, "quantity": 1}
+        - GET /cart
+        - POST /checkout {"payment_method": "credit_card"}
         end
         
         Open Model:
@@ -220,10 +222,10 @@ class LLMService:
         retry_attempts: 3
         
         journey: ecommerce_flow
-        - GET /api/products
-        - POST /api/cart {"product_id": 123, "quantity": 1}
-        - GET /api/cart
-        - POST /api/checkout {"payment_method": "credit_card"}
+        - GET /products
+        - POST /cart {"product_id": 123, "quantity": 1}
+        - GET /cart
+        - POST /checkout {"payment_method": "credit_card"}
         end
         """
     
