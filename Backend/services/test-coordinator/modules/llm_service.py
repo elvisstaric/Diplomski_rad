@@ -543,5 +543,178 @@ class LLMService:
         
         return variations
     
+    async def generate_causal_report(self, causal_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate causal analysis report using LLM"""
+        if not self.client:
+            return {
+                "report": "LLM service not available - cannot generate causal report",
+                "status": "error",
+                "error": "LLM service not available"
+            }
+        
+        try:
+            system_prompt = self.get_causal_report_system_prompt()
+            user_prompt = self.format_causal_data_for_report(causal_data)
+            
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3,
+                max_tokens=4000
+            )
+            
+            report = response.choices[0].message.content.strip()
+            
+            return {
+                "report": report,
+                "status": "success",
+                "model_used": self.model
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating causal report: {e}")
+            return {
+                "report": f"Error generating causal report: {str(e)}",
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def get_causal_report_system_prompt(self):
+        return """
+        You are an expert in causal analysis and generating detailed causal inference reports.
+        
+        Your task is to generate a professional causal analysis report that includes:
+        
+        1. **Experiment Overview** - description and hypothesis
+        2. **Causal Analysis Results** - detailed analysis of causal effects
+        3. **Statistical Significance** - confidence intervals and p-values
+        4. **Refutation Tests** - robustness checks and validation
+        5. **Data Summary** - sample size, treatment groups, observations
+        6. **Endpoint-Specific Analysis** - per-endpoint causal effects
+        7. **Recommendations** - actionable insights based on findings
+        
+        Report structure:
+        - Use clear headings and subheadings
+        - Include specific numbers and statistical measures
+        - Explain causal relationships and their implications
+        - Provide concrete, actionable recommendations
+        - Use professional statistical terminology
+        
+        Style:
+        - Professional and technical
+        - Clear and concise
+        - Focused on causal relationships and their practical implications
+        - Use bullet points for easier reading
+        - Include confidence levels and statistical significance
+        """
+    
+    def format_causal_data_for_report(self, causal_data: Dict[str, Any]) -> str:
+        """Format causal analysis data for LLM report generation"""
+        experiment_description = causal_data.get("experiment_description", "Causal Analysis")
+        causal_results = causal_data.get("causal_results", {})
+        analysis_type = causal_data.get("analysis_type", "Causal Analysis")
+        causal_estimate = causal_data.get("causal_estimate", {})
+        refutation_test = causal_data.get("refutation_test", {})
+        data_summary = causal_data.get("data_summary", {})
+        endpoint_analyses = causal_data.get("endpoint_analyses", {})
+        
+        formatted_data = f"""
+        Generate a detailed causal analysis report based on the following data:
+        
+        **EXPERIMENT DESCRIPTION:**
+        {experiment_description}
+        
+        **ANALYSIS TYPE:**
+        {analysis_type}
+        
+        **CAUSAL ESTIMATE:**
+        {causal_estimate}
+        
+        **REFUTATION TEST:**
+        {refutation_test}
+        
+        **DATA SUMMARY:**
+        - Total Observations: {data_summary.get('total_observations', 0)}
+        - Treatment Groups: {data_summary.get('treatment_groups', 0)}
+        - Endpoints: {data_summary.get('endpoints', 0)}
+        - Mean Outcome by Treatment: {data_summary.get('mean_outcome_by_treatment', {})}
+        
+        **ENDPOINT-SPECIFIC ANALYSES:**
+        """
+        
+        for analysis_name, analysis_data in endpoint_analyses.items():
+            if "error" in analysis_data:
+                continue
+                
+            endpoint_name = analysis_name.split("_")[0]
+            metric_type = analysis_name.split("_")[1]
+            
+            formatted_data += f"""
+        - {endpoint_name} - {metric_type.title()}:
+          o Causal Estimate: {analysis_data.get('causal_estimate', {})}
+          o Refutation Test: {analysis_data.get('refutation_test', {})}
+          o Data Summary: {analysis_data.get('data_summary', {})}
+        """
+        
+        formatted_data += f"""
+        
+        Generate a detailed causal analysis report following this structure:
+        1. Experiment Overview with hypothesis
+        2. Causal Analysis Results with statistical measures
+        3. Statistical Significance and confidence intervals
+        4. Refutation Tests and robustness checks
+        5. Data Summary and sample characteristics
+        6. Endpoint-Specific Analysis
+        7. Recommendations and actionable insights
+        
+        Use format similar to this example:
+        "# Causal Analysis Report – '[experiment description]'
+        
+        ## Test Summary Report
+        **Experiment Description:** [description]
+        **Analysis Type:** [type]
+        **Total Observations:** [number] observations
+        **Treatment Groups:** [number] groups
+        **Endpoints Analyzed:** [number] endpoints
+        
+        ## Causal Analysis Results
+        **Causal Effect:** [value with confidence interval]
+        **Statistical Significance:** [p-value and significance level]
+        **Method Used:** [estimation method]
+        
+        ## Refutation Tests
+        **Robustness Check:** [refutation test results]
+        **Validation Method:** [refutation method used]
+        
+        ## Data Summary
+        **Sample Size:** [number] observations
+        **Treatment Groups:** [number] groups
+        **Mean Outcomes by Treatment:** [detailed breakdown]
+        
+        ## Endpoint-Specific Analysis
+        ### [Endpoint] - [Metric]
+        **Causal Effect:** [value]
+        **Confidence Interval:** [range]
+        **Statistical Significance:** [p-value]
+        
+        ## Performance Insights
+        • [insight about causal relationships]
+        • [insight about treatment effects]
+        • [insight about data quality]
+        
+        ## Recommended Corrective Actions
+        • [specific recommendation based on findings]
+        • [specific recommendation based on findings]
+        • [specific recommendation based on findings]
+        
+        ## Conclusion
+        [summary of findings and implications for performance optimization]"
+        """
+        
+        return formatted_data
+    
 
 llm_service = LLMService()

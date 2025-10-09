@@ -41,8 +41,13 @@ export const testApi = {
 // Causal experiment API
 export const causalExperimentApi = {
   // Run causal experiment
-  runExperiment: (experimentData) =>
-    api.post("/experiments/causal", experimentData, { timeout: 300000 }),
+  runExperiment: (experimentData) => {
+    console.log(
+      "🌐 API: Calling /experiments/causal with data:",
+      experimentData
+    );
+    return api.post("/experiments/causal", experimentData, { timeout: 300000 });
+  },
 
   // Get experiment results
   getExperiment: (experimentId) => api.get(`/experiments/${experimentId}`),

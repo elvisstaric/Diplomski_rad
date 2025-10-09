@@ -80,6 +80,7 @@ class CausalExperimentRequest(BaseModel):
     number_of_tests: int = Field(..., ge=2, le=10, description="Number of test variations to generate")
     target_url: str = Field(..., description="Target URL for testing")
     auth_credentials: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Auth credentials")
+    generated_variations: Optional[List[Dict[str, Any]]] = Field(None, description="Pre-generated DSL variations")
 
 class CausalExperimentResult(BaseModel):
     experiment_id: str = Field(..., description="Experiment ID")

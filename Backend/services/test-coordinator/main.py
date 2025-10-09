@@ -563,25 +563,45 @@ async def get_report_content(test_id: str):
 async def run_causal_experiment(experiment_request: CausalExperimentRequest):
     """Run a causal inference experiment with multiple test variations"""
     try:
+        print("=" * 50)
+        print("🚨 CAUSAL EXPERIMENT ENDPOINT CALLED!")
+        print("=" * 50)
+        logger.info(f"🚨 BACKEND RECEIVED REQUEST: /experiments/causal")
+        logger.info(f"📊 Request data: {experiment_request}")
+        print(f"🚨 BACKEND RECEIVED REQUEST: /experiments/causal")
+        print(f"📊 Request data: {experiment_request}")
         experiment_id = str(uuid.uuid4())
-        logger.info(f"Starting causal experiment {experiment_id}")
+        logger.info(f"🎯 CAUSAL EXPERIMENT STARTED: {experiment_id}")
+        print(f"🎯 CAUSAL EXPERIMENT STARTED: {experiment_id}")
         
-        # Step 1: Generate DSL variations using LLM
-        logger.info(f"Generating DSL variations for experiment {experiment_id}")
-        variations_response = await llm_service.generate_causal_experiment_variations(
-            experiment_request.baseline_dsl,
-            experiment_request.experiment_description,
-            experiment_request.number_of_tests
-        )
-        
-        if variations_response["status"] != "success":
-            raise HTTPException(
-                status_code=500, 
-                detail=f"Failed to generate variations: {variations_response.get('error', 'Unknown error')}"
+        # Check if we have pre-generated variations in the request
+        if hasattr(experiment_request, 'generated_variations') and experiment_request.generated_variations:
+            print(f"✅ Using pre-generated variations: {len(experiment_request.generated_variations)}")
+            variations = experiment_request.generated_variations
+        else:
+            # Step 1: Generate DSL variations using LLM
+            logger.info(f"Generating DSL variations for experiment {experiment_id}")
+            print(f"🤖 CALLING LLM SERVICE...")
+            print(f"   baseline_dsl: {experiment_request.baseline_dsl[:100]}...")
+            print(f"   experiment_description: {experiment_request.experiment_description}")
+            print(f"   number_of_tests: {experiment_request.number_of_tests}")
+            
+            variations_response = await llm_service.generate_causal_experiment_variations(
+                experiment_request.baseline_dsl,
+                experiment_request.experiment_description,
+                experiment_request.number_of_tests
             )
-        
-        variations = variations_response["variations"]
-        logger.info(f"Generated {len(variations)} variations for experiment {experiment_id}")
+            
+            print(f"✅ LLM RESPONSE: {variations_response}")
+            
+            if variations_response["status"] != "success":
+                raise HTTPException(
+                    status_code=500, 
+                    detail=f"Failed to generate variations: {variations_response.get('error', 'Unknown error')}"
+                )
+            
+            variations = variations_response["variations"]
+            logger.info(f"Generated {len(variations)} variations for experiment {experiment_id}")
         
         # Step 2: Run all test variations
         test_results = []
@@ -740,11 +760,16 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
         
         # Create DataFrame from test results
         logger.info(f"Creating DataFrame from {len(test_results)} test results")
+        print(f"🚀 STARTING CAUSAL ANALYSIS for experiment {experiment_id}")
+        print(f"📊 Test results count: {len(test_results)}")
         df = causal_analysis_engine.create_experiment_dataframe(test_results)
+        print(f"✅ DataFrame created successfully!")
         logger.info(f"DataFrame created with shape: {df.shape}, columns: {df.columns.tolist()}")
         
         # Perform causal analysis
+        print(f"🔬 Starting causal effect analysis...")
         causal_results = causal_analysis_engine.analyze_causal_effect(df, "latency")
+        print(f"✅ Causal effect analysis completed!")
         
         # Analyze multiple endpoints if available
         endpoint_analyses = causal_analysis_engine.analyze_multiple_endpoints(df)
@@ -761,7 +786,7 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
         }
         
         # Generate human-readable report
-        causal_analysis = causal_analysis_engine.generate_causal_report(
+        causal_analysis = await causal_analysis_engine.generate_causal_report(
             combined_causal_results.get("overall_analysis", {}), 
             experiment_request.experiment_description
         )
@@ -786,6 +811,13 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"❌ ERROR in run_causal_experiment: {e}")
+        logger.error(f"❌ Error type: {type(e)}")
+        print(f"❌ ERROR in run_causal_experiment: {e}")
+        print(f"❌ Error type: {type(e)}")
+        import traceback
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
+        print(f"❌ Traceback: {traceback.format_exc()}")
         logger.error(f"Error running causal experiment: {e}")
         raise HTTPException(status_code=500, detail=f"Error running experiment: {str(e)}")
 

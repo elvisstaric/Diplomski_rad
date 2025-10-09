@@ -144,6 +144,16 @@
               generatedVariations.length === 0 ||
               isRunningExperiment
             "
+            @mouseover="
+              console.log(
+                'Button hover - canRun:',
+                canRunExperiment,
+                'variations:',
+                generatedVariations.length,
+                'running:',
+                isRunningExperiment
+              )
+            "
             class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
           >
             <svg
@@ -191,36 +201,55 @@
           <h3 class="text-lg font-semibold text-gray-900">
             Causal Analysis Results
           </h3>
-          <button
-            @click="showResultsModal = false"
-            class="text-gray-400 hover:text-gray-600"
-          >
-            <svg
-              class="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          <div class="flex items-center space-x-2">
+            <button
+              @click="downloadCausalReport"
+              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center space-x-2"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M6 18L18 6M6 6l12 12"
-              ></path>
-            </svg>
-          </button>
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                ></path>
+              </svg>
+              <span>Download Markdown</span>
+            </button>
+            <button
+              @click="showResultsModal = false"
+              class="text-gray-400 hover:text-gray-600"
+            >
+              <svg
+                class="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                ></path>
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div class="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
           <div v-if="experimentResult" class="space-y-6">
-            <!-- Summary -->
-            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 class="font-semibold text-blue-900 mb-2">
-                Experiment Summary
-              </h4>
-              <p class="text-blue-800">
-                {{ experimentResult.causal_analysis }}
-              </p>
+            <!-- Causal Analysis Report -->
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+              <div
+                class="prose prose-sm max-w-none"
+                v-html="formatMarkdown(experimentResult.causal_analysis)"
+              ></div>
             </div>
 
             <!-- Test Results Table -->
@@ -323,17 +352,39 @@ export default {
     const isGeneratingVariations = ref(false);
     const isRunningExperiment = ref(false);
 
-    const completedTests = computed(() =>
-      props.tests.filter((test) => test.status === "completed")
-    );
+    const completedTests = computed(() => {
+      const completed = props.tests.filter(
+        (test) => test.status === "completed"
+      );
+      console.log(
+        "completedTests computed - total tests:",
+        props.tests.length,
+        "completed:",
+        completed.length
+      );
+      console.log(
+        "All test statuses:",
+        props.tests.map((t) => ({ id: t.test_id, status: t.status }))
+      );
+      return completed;
+    });
 
     const selectedTest = computed(() =>
       props.tests.find((test) => test.test_id === selectedTestId.value)
     );
 
-    const canRunExperiment = computed(
-      () => selectedTestId.value && experimentDescription.value.trim()
-    );
+    const canRunExperiment = computed(() => {
+      const canRun = selectedTestId.value && experimentDescription.value.trim();
+      console.log(
+        "canRunExperiment computed - selectedTestId:",
+        selectedTestId.value,
+        "description:",
+        experimentDescription.value.trim(),
+        "result:",
+        canRun
+      );
+      return canRun;
+    });
 
     const formatDateTime = (dateString) => {
       if (!dateString) return "N/A";
@@ -405,6 +456,11 @@ export default {
     };
 
     const runCausalExperiment = async () => {
+      console.log("🎯 runCausalExperiment called!");
+      console.log("Selected test:", selectedTest.value);
+      console.log("Can run experiment:", canRunExperiment.value);
+      console.log("Generated variations:", generatedVariations.value.length);
+
       if (!selectedTest.value) {
         alert("Please select a test");
         return;
@@ -424,6 +480,7 @@ export default {
           target_url:
             selectedTest.value.target_url || selectedTest.value.url || "",
           auth_credentials: selectedTest.value.auth_credentials || {},
+          generated_variations: generatedVariations.value, // Send pre-generated variations
         };
 
         const response = await causalExperimentApi.runExperiment(
@@ -452,39 +509,46 @@ export default {
       }
     };
 
-    const downloadReport = () => {
+    const downloadCausalReport = () => {
       if (!experimentResult.value) return;
 
-      const content = `
-# Causal Analysis Report
-
-## Experiment Summary
-${experimentResult.value.causal_analysis}
-
-## Test Results
-${experimentResult.value.test_results
-  .map(
-    (result, index) => `
-### Test ${index + 1}: ${result.variation_name || `Variation ${index + 1}`}
-- Status: ${result.status}
-- Success Rate: ${result.success_rate}%
-- Average Latency: ${result.avg_latency}ms
-`
-  )
-  .join("\n")}
-
-Generated at: ${new Date().toLocaleString()}
-      `.trim();
+      const content =
+        experimentResult.value.causal_analysis ||
+        "No causal analysis available";
 
       const blob = new Blob([content], { type: "text/markdown" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `causal-analysis-${selectedTestId.value}-${Date.now()}.md`;
+      a.download = `causal-analysis-report-${Date.now()}.md`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+    };
+
+    const formatMarkdown = (text) => {
+      if (!text) return "";
+
+      // Convert markdown to HTML for display
+      return text
+        .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mb-4">$1</h1>')
+        .replace(
+          /^## (.*$)/gim,
+          '<h2 class="text-xl font-semibold mb-3 mt-6">$1</h2>'
+        )
+        .replace(
+          /^### (.*$)/gim,
+          '<h3 class="text-lg font-medium mb-2 mt-4">$1</h3>'
+        )
+        .replace(
+          /^\*\*(.*)\*\*: (.*$)/gim,
+          '<p class="mb-2"><strong class="font-semibold">$1:</strong> $2</p>'
+        )
+        .replace(/^• (.*$)/gim, '<li class="ml-4 mb-1">$1</li>')
+        .replace(/^- (.*$)/gim, '<li class="ml-4 mb-1">$1</li>')
+        .replace(/\n\n/g, '</p><p class="mb-4">')
+        .replace(/\n/g, "<br>");
     };
 
     return {
@@ -507,7 +571,8 @@ Generated at: ${new Date().toLocaleString()}
       toggleAllVariations,
       generateVariations,
       runCausalExperiment,
-      downloadReport,
+      downloadCausalReport,
+      formatMarkdown,
     };
   },
 };
