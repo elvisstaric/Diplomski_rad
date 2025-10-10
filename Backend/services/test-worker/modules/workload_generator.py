@@ -92,11 +92,6 @@ class WorkloadGenerator:
     def update_time(self, elapsed_time: float):
         self.current_time = elapsed_time
     
-    def get_next_user_arrival(self):
-        if self.user_model == "open" and self.arrival_rate:
-            return random.expovariate(self.arrival_rate)
-        return None
-    
     def get_session_duration(self):
         if self.user_model == "open" and self.session_duration:
             max_session_duration = self.session_duration * 3 

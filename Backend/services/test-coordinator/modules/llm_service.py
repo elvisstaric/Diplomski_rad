@@ -28,7 +28,7 @@ class LLMService:
             }
         
         try:
-            system_prompt = self._get_system_prompt()
+            system_prompt = self.get_system_prompt()
             api_info = ""
             if swagger_docs:
                 api_info += f"\n\nSwagger documentation:\n{swagger_docs[:2000]}..." 
@@ -109,7 +109,7 @@ class LLMService:
             }
         
         try:
-            system_prompt = self._get_optimization_system_prompt()
+            system_prompt = self.get_optimization_system_prompt()
             user_prompt = f"""
             Optimize the following DSL based on the goal: {optimization_goal}
             
@@ -167,7 +167,7 @@ class LLMService:
                 "error": str(e)
             }
     
-    def _get_system_prompt(self):
+    def get_system_prompt(self):
         return """
         You are an expert in generating DSL scripts for web application performance testing.
         
@@ -229,7 +229,7 @@ class LLMService:
         end
         """
     
-    def _get_optimization_system_prompt(self):
+    def get_optimization_system_prompt(self):
         return """
         You are an expert in optimizing DSL scripts for performance testing.
         
@@ -455,8 +455,7 @@ class LLMService:
             )
             
             result_text = response.choices[0].message.content.strip()
-            
-            # Try to parse JSON response
+ 
             try:
                 import json
                 variations = json.loads(result_text)
@@ -466,7 +465,6 @@ class LLMService:
                     "model_used": self.model
                 }
             except json.JSONDecodeError as e:
-                # If JSON parsing fails, try to extract from text
                 variations = self.extract_variations_from_text(result_text)
                 return {
                     "variations": variations,
@@ -524,7 +522,6 @@ class LLMService:
                 current_dsl = []
                 in_dsl_block = False
                 
-                # Extract variation name
                 name = line.split(':', 1)[1].strip().strip('"')
                 current_variation['variation_name'] = name
                 
@@ -538,14 +535,14 @@ class LLMService:
             elif in_dsl_block and line and not line.startswith('"'):
                 current_dsl.append(line)
         
-        # Add last variation
+        
         if current_variation:
             current_variation['dsl_script'] = '\n'.join(current_dsl)
             variations.append(current_variation)
         
         return variations
     
-    async def generate_causal_report(self, causal_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_causal_report(self, causal_data: Dict[str, Any]):
         """Generate causal analysis report using LLM"""
         if not self.client:
             return {
@@ -592,9 +589,8 @@ class LLMService:
         
         1. **Experiment Overview** - description and hypothesis
         2. **Causal Analysis Results** - detailed analysis of causal effects
-        3. **Statistical Significance** - confidence intervals and p-values
-        4. **Refutation Tests** - robustness checks and validation
-        5. **Data Summary** - sample size, treatment groups, observations
+        3. **Refutation Tests** - robustness checks and validation
+        4. **Data Summary** - sample size, treatment groups, observations
         6. **Endpoint-Specific Analysis** - per-endpoint causal effects
         7. **Recommendations** - actionable insights based on findings
         
@@ -611,13 +607,24 @@ class LLMService:
         - Focused on causal relationships and their practical implications
         - Use bullet points for easier reading
         - Include confidence levels and statistical significance
+        
+        IMPORTANT: Refutation Tests Interpretation:
+        - In refutation tests, a p-value CLOSE TO 1.0 is GOOD and indicates robustness
+        - P-value near 1.0 means the original causal effect is NOT due to random chance
+        - P-value near 0.0 means the causal effect might be spurious or random
+        - Always explain that high p-values (>0.8) in refutation tests validate the causal findings
+        - Low p-values (<0.2) in refutation tests suggest the causal effect may not be reliable
         """
     
     def format_causal_data_for_report(self, causal_data: Dict[str, Any]) -> str:
         """Format causal analysis data for LLM report generation"""
         experiment_description = causal_data.get("experiment_description", "Causal Analysis")
-        causal_results = causal_data.get("causal_results", {})
         analysis_type = causal_data.get("analysis_type", "Causal Analysis")
+    
+        if causal_data.get("multi_metric", False):
+            return self.format_multi_metric_causal_data(causal_data, experiment_description, analysis_type)
+        
+        causal_results = causal_data.get("causal_results", {})
         causal_estimate = causal_data.get("causal_estimate", {})
         refutation_test = causal_data.get("refutation_test", {})
         data_summary = causal_data.get("data_summary", {})
@@ -666,9 +673,8 @@ class LLMService:
         Generate a detailed causal analysis report following this structure:
         1. Experiment Overview with hypothesis
         2. Causal Analysis Results with statistical measures
-        3. Statistical Significance and confidence intervals
-        4. Refutation Tests and robustness checks
-        5. Data Summary and sample characteristics
+        3. Refutation Tests and robustness checks
+        4. Data Summary and sample characteristics
         6. Endpoint-Specific Analysis
         7. Recommendations and actionable insights
         
@@ -684,12 +690,12 @@ class LLMService:
         
         ## Causal Analysis Results
         **Causal Effect:** [value with confidence interval]
-        **Statistical Significance:** [p-value and significance level]
         **Method Used:** [estimation method]
         
         ## Refutation Tests
-        **Robustness Check:** [refutation test results]
+        **Robustness Check:** [refutation test results with p-value interpretation]
         **Validation Method:** [refutation method used]
+        **Interpretation:** [Explain that p-value close to 1.0 indicates robust causal effect, while p-value close to 0.0 suggests spurious results]
         
         ## Data Summary
         **Sample Size:** [number] observations
@@ -700,7 +706,6 @@ class LLMService:
         ### [Endpoint] - [Metric]
         **Causal Effect:** [value]
         **Confidence Interval:** [range]
-        **Statistical Significance:** [p-value]
         
         ## Performance Insights
         • [insight about causal relationships]
@@ -714,6 +719,145 @@ class LLMService:
         
         ## Conclusion
         [summary of findings and implications for performance optimization]"
+        """
+        
+        return formatted_data
+    
+    def format_multi_metric_causal_data(self, causal_data: Dict[str, Any], experiment_description: str, analysis_type: str) -> str:
+        """Format multi-metric causal analysis data for LLM report generation"""
+        latency_analysis = causal_data.get("latency_analysis", {})
+        success_rate_analysis = causal_data.get("success_rate_analysis", {})
+        error_rate_analysis = causal_data.get("error_rate_analysis", {})
+        
+        formatted_data = f"""
+        Generate a comprehensive multi-metric causal analysis report based on the following data:
+        
+        **EXPERIMENT DESCRIPTION:**
+        {experiment_description}
+        
+        **ANALYSIS TYPE:**
+        {analysis_type}
+        
+        **LATENCY ANALYSIS:**
+        """
+        
+        if latency_analysis and "error" not in latency_analysis:
+            formatted_data += f"""
+        - Causal Estimate: {latency_analysis.get("causal_estimate", {})}
+        - Refutation Test: {latency_analysis.get("refutation_test", {})}
+        - Data Summary: {latency_analysis.get("data_summary", {})}
+        - Analysis Type: {latency_analysis.get("analysis_type", "Latency Analysis")}
+        """
+        else:
+            formatted_data += f"""
+        - Error: {latency_analysis.get("error", "No latency analysis available")}
+        """
+        
+        formatted_data += f"""
+        
+        **SUCCESS RATE ANALYSIS:**
+        """
+        
+        if success_rate_analysis and "error" not in success_rate_analysis:
+            formatted_data += f"""
+        - Causal Estimate: {success_rate_analysis.get("causal_estimate", {})}
+        - Refutation Test: {success_rate_analysis.get("refutation_test", {})}
+        - Data Summary: {success_rate_analysis.get("data_summary", {})}
+        - Analysis Type: {success_rate_analysis.get("analysis_type", "Success Rate Analysis")}
+        """
+        else:
+            formatted_data += f"""
+        - Error: {success_rate_analysis.get("error", "No success rate analysis available")}
+        """
+        
+        formatted_data += f"""
+        
+        **ERROR RATE ANALYSIS:**
+        """
+        
+        if error_rate_analysis and "error" not in error_rate_analysis:
+            # Check if there's a note about no variation
+            if "note" in error_rate_analysis:
+                formatted_data += f"""
+        - Note: {error_rate_analysis.get("note", "")}
+        - Data Summary: {error_rate_analysis.get("data_summary", {})}
+        - Analysis Type: {error_rate_analysis.get("analysis_type", "Error Rate Analysis")}
+        """
+            else:
+                formatted_data += f"""
+        - Causal Estimate: {error_rate_analysis.get("causal_estimate", {})}
+        - Refutation Test: {error_rate_analysis.get("refutation_test", {})}
+        - Data Summary: {error_rate_analysis.get("data_summary", {})}
+        - Analysis Type: {error_rate_analysis.get("analysis_type", "Error Rate Analysis")}
+        """
+        else:
+            formatted_data += f"""
+        - Error: {error_rate_analysis.get("error", "No error rate analysis available")}
+        """
+        
+        formatted_data += f"""
+        
+        Generate a comprehensive multi-metric causal analysis report following this structure:
+        1. Experiment Overview with hypothesis
+        2. Multi-Metric Causal Analysis Results (Latency, Success Rate, Error Rate)
+        3. Refutation Tests and robustness checks for each metric
+        4. Comparative Analysis across metrics
+        5. Data Summary and sample characteristics
+        7. Endpoint-Specific Analysis (if available)
+        8. Recommendations and actionable insights based on all metrics
+        
+        Use format similar to this example:
+        "# Multi-Metric Causal Analysis Report – '[experiment description]'
+        
+        ## Test Summary Report
+        **Experiment Description:** [description]
+        **Analysis Type:** Multi-Metric Causal Analysis
+        **Metrics Analyzed:** Latency, Success Rate, Error Rate
+        
+        ## Multi-Metric Causal Analysis Results
+        
+        ### Latency Analysis
+        **Causal Effect on Latency:** [value with confidence interval]
+        **Method Used:** [estimation method]
+        
+        ### Success Rate Analysis
+        **Causal Effect on Success Rate:** [value with confidence interval]
+        **Method Used:** [estimation method]
+        
+        ### Error Rate Analysis
+        **Causal Effect on Error Rate:** [value with confidence interval OR note about no variation]
+        **Method Used:** [estimation method OR "Not applicable - no error variation"]
+        
+        ## Refutation Tests
+        **Latency Robustness Check:** [refutation test results with p-value interpretation]
+        **Success Rate Robustness Check:** [refutation test results with p-value interpretation]
+        **Error Rate Robustness Check:** [refutation test results with p-value interpretation OR "Not applicable - no error variation"]
+        **Overall Interpretation:** [Explain that p-values close to 1.0 across all metrics indicate robust causal effects]
+        
+        ## Comparative Analysis
+        **Metric Correlation:** [analysis of relationships between metrics]
+        **Treatment Impact Ranking:** [ranking of treatment effects across metrics]
+        **Consistency Check:** [analysis of consistency across metrics]
+        
+        ## Data Summary
+        **Sample Size:** [number] observations
+        **Treatment Groups:** [number] groups
+        **Mean Outcomes by Treatment:** [detailed breakdown for each metric]
+        
+        ## Performance Insights
+        • [insight about latency causal relationships]
+        • [insight about success rate causal relationships]
+        • [insight about error rate causal relationships]
+        • [insight about cross-metric relationships]
+        
+        ## Recommended Corrective Actions
+        • [specific recommendation based on latency findings]
+        • [specific recommendation based on success rate findings]
+        • [specific recommendation based on error rate findings]
+        • [specific recommendation based on multi-metric analysis]
+        
+        ## Conclusion
+        [comprehensive summary of findings across all metrics and implications for performance optimization]"
         """
         
         return formatted_data

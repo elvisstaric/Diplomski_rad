@@ -203,7 +203,7 @@ class TestAnalytics:
             "time_span_seconds": round((timestamps[-1] - timestamps[0]).total_seconds(), 2) if len(timestamps) > 1 else 0
         }
     
-    def extract_common_messages(self, errors: List[Dict[str, Any]]) -> List[Tuple[str, int]]:
+    def extract_common_messages(self, errors: List[Dict[str, Any]]) :
         
         messages = [error.get("error_message", "") for error in errors if error.get("error_message")]
         message_counts = Counter(messages)

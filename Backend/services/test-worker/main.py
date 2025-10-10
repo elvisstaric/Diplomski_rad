@@ -19,7 +19,7 @@ sys.path.insert(0, backend_new_dir)
 
 from shared.models import TestTask, TestResult, HealthCheck
 from shared.DSL.main import parse_dsl
-from modules.journey_executor import execute_user_journey, execute_single_step, execute_with_graceful_degradation, DegradationStrategy
+from modules.journey_executor import execute_user_journey, execute_single_step, execute_with_graceful_degradation, DegradationStrategy, setup_auth
 from modules.workload_generator import WorkloadGenerator
 
 
@@ -83,7 +83,7 @@ async def run_performance_test(test_task: Dict[str, Any]):
         arrival_rate = dsl_data.get("arrival_rate")
         session_duration = dsl_data.get("session_duration")
      
-        auth_type = dsl_data.get("auth_type", "none")
+        auth_type = test_task.get("auth_type", dsl_data.get("auth_type", "none"))
         auth_credentials = test_task.get("auth_credentials", {})
         auth_endpoint=auth_credentials.get("loginEndpoint")
         
@@ -262,9 +262,10 @@ async def simulate_user_session(user_id: int, target_url: str, test_task: Dict[s
                                      auth_type, auth_credentials, auth_endpoint, timeout, retry_attempts, user_id)
         else:
             endpoint = random.choice(steps)
+            auth = await setup_auth(session, target_url, auth_type, auth_credentials, auth_endpoint)
             strategy = await execute_with_graceful_degradation(
                 session, target_url, endpoint, requests, successful, failed, latencies, errors, 
-                None, timeout, retry_attempts, user_id
+                auth, timeout, retry_attempts, user_id
             )
             if strategy == DegradationStrategy.TERMINATE_JOURNEY:
                 logger.warning(f"Terminating session for user {user_id} due to critical error")
@@ -338,8 +339,6 @@ async def simulate_user_journey(user_id: int, target_url: str, test_task: Dict[s
         "latencies": latencies,
         "errors": errors
     }
-
-
 
 
 async def send_results_to_coordinator(test_result: TestResult):

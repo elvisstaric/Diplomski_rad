@@ -17,7 +17,7 @@ backend_new_dir = os.path.join(current_dir, '..', '..')
 sys.path.insert(0, backend_new_dir)
 
 
-from shared.models import PingRequest, TestRequest, TestStatus, BaseResponse, ErrorResponse, GenerateDSLRequest, OptimizeDSLRequest, DSLResponse, DetailedTestAnalysis, TestReport, CausalExperimentRequest, CausalExperimentResult
+from shared.models import PingRequest, TestRequest, TestStatus, GenerateDSLRequest, OptimizeDSLRequest, DSLResponse, DetailedTestAnalysis, TestReport, CausalExperimentRequest, CausalExperimentResult
 from shared.DSL.main import parse_dsl
 from shared.analytics.test_analytics import TestAnalytics
 from shared.analytics.causal_analysis import causal_analysis_engine
@@ -61,13 +61,9 @@ failed_tests: Dict[str, TestStatus] = {}
 test_results: Dict[str, Dict[str, Any]] = {}
 test_reports: Dict[str, TestReport] = {}
 
-# Store causal experiments in memory
 causal_experiments: Dict[str, CausalExperimentResult] = {}
 
 analytics_engine = TestAnalytics()
-
-
-
 
 async def check_test_timeouts():
     current_time = datetime.now()
@@ -145,6 +141,7 @@ async def create_test(test_request: TestRequest):
         "target_url": test_request.target_url,
         "dsl_script": test_request.dsl_script,
         "swagger_docs": test_request.swagger_docs,
+        "auth_type": test_request.auth_type,
         "auth_credentials": test_request.auth_credentials,
         "created_at": datetime.now().isoformat(),
         "ping_result": ping_result
@@ -563,36 +560,17 @@ async def get_report_content(test_id: str):
 async def run_causal_experiment(experiment_request: CausalExperimentRequest):
     """Run a causal inference experiment with multiple test variations"""
     try:
-        print("=" * 50)
-        print("🚨 CAUSAL EXPERIMENT ENDPOINT CALLED!")
-        print("=" * 50)
-        logger.info(f"🚨 BACKEND RECEIVED REQUEST: /experiments/causal")
-        logger.info(f"📊 Request data: {experiment_request}")
-        print(f"🚨 BACKEND RECEIVED REQUEST: /experiments/causal")
-        print(f"📊 Request data: {experiment_request}")
         experiment_id = str(uuid.uuid4())
-        logger.info(f"🎯 CAUSAL EXPERIMENT STARTED: {experiment_id}")
-        print(f"🎯 CAUSAL EXPERIMENT STARTED: {experiment_id}")
         
-        # Check if we have pre-generated variations in the request
+       
         if hasattr(experiment_request, 'generated_variations') and experiment_request.generated_variations:
-            print(f"✅ Using pre-generated variations: {len(experiment_request.generated_variations)}")
             variations = experiment_request.generated_variations
         else:
-            # Step 1: Generate DSL variations using LLM
-            logger.info(f"Generating DSL variations for experiment {experiment_id}")
-            print(f"🤖 CALLING LLM SERVICE...")
-            print(f"   baseline_dsl: {experiment_request.baseline_dsl[:100]}...")
-            print(f"   experiment_description: {experiment_request.experiment_description}")
-            print(f"   number_of_tests: {experiment_request.number_of_tests}")
-            
             variations_response = await llm_service.generate_causal_experiment_variations(
                 experiment_request.baseline_dsl,
                 experiment_request.experiment_description,
                 experiment_request.number_of_tests
             )
-            
-            print(f"✅ LLM RESPONSE: {variations_response}")
             
             if variations_response["status"] != "success":
                 raise HTTPException(
@@ -601,41 +579,41 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
                 )
             
             variations = variations_response["variations"]
-            logger.info(f"Generated {len(variations)} variations for experiment {experiment_id}")
         
-        # Step 2: Run all test variations
+        
         test_results = []
         test_ids = []
         
         for i, variation in enumerate(variations):
             logger.info(f"Running test {i+1}/{len(variations)} for experiment {experiment_id}")
             
-            # Parse the DSL variation
+            
             try:
                 parsed_dsl = parse_dsl(variation["dsl_script"])
             except Exception as e:
                 logger.error(f"Failed to parse DSL for variation {i+1}: {e}")
                 continue
             
-            # Create test request
+            
             test_request = TestRequest(
                 test_id=str(uuid.uuid4()),
                 dsl_script=variation["dsl_script"],
                 target_url=experiment_request.target_url,
+                auth_type=experiment_request.auth_type,
                 auth_credentials=experiment_request.auth_credentials,
                 parsed_dsl=parsed_dsl
             )
             
-            # Run the test using existing create_test logic
+            
             test_id = test_request.test_id
             
-            # Ping backend first
+            
             ping_result = await ping_backend(test_request.target_url)
             if not ping_result["available"]:
                 logger.error(f"Backend unavailable for test {test_id}: {ping_result['error']}")
                 continue
             
-            # Parse DSL
+            
             try:
                 dsl_data = parse_dsl(test_request.dsl_script)
                 if not dsl_data.get("steps"):
@@ -645,7 +623,7 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
                 logger.error(f"Failed to parse DSL for test {test_id}: {e}")
                 continue
             
-            # Create test status
+            
             test_status = TestStatus(
                 test_id=test_id,
                 status="running",
@@ -657,22 +635,22 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
                 results={}
             )
             
-            # Store test status
+            
             active_tests[test_id] = test_status
             
-            # Send test to workers via RabbitMQ
+            
             try:
                 connection = await aio_pika.connect_robust("amqp://localhost")
                 channel = await connection.channel()
                 
-                # Use same format as create_test endpoint
+                
                 test_task = {
                     "test_id": test_id,
                     "dsl_script": test_request.dsl_script,
                     "parsed_dsl": dsl_data,
                     "target_url": test_request.target_url,
                     "auth_credentials": test_request.auth_credentials,
-                    "ping_result": {"available": True, "latency_ms": 0}  # Already pinged above
+                    "ping_result": {"available": True, "latency_ms": 0}  
                 }
                 
                 await channel.default_exchange.publish(
@@ -680,7 +658,7 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
                         body=json.dumps(test_task).encode(),
                         delivery_mode=aio_pika.DeliveryMode.PERSISTENT
                     ),
-                    routing_key="test_tasks"  # Use same routing key as create_test
+                    routing_key="test_tasks"  
                 )
                 
                 await connection.close()
@@ -688,7 +666,7 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
                 
             except Exception as e:
                 logger.error(f"Failed to send test {test_id} to workers: {e}")
-                # Mark test as failed
+                
                 test_status.status = "failed"
                 test_status.results = {"error": str(e)}
                 failed_tests[test_id] = test_status
@@ -697,16 +675,16 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
             
             test_ids.append(test_id)
             
-            # Wait for test completion
-            max_wait_time = 60  # 1 minute max per test
+
+            max_wait_time = 60 
             wait_time = 0
             while wait_time < max_wait_time:
                 if test_id in completed_tests or test_id in failed_tests:
                     break
-                await asyncio.sleep(2)  # Check every 2 seconds instead of 5
+                await asyncio.sleep(2)  
                 wait_time += 2
             
-            # Collect results
+            
             if test_id in completed_tests:
                 test_status = completed_tests[test_id]
                 test_result = {
@@ -755,26 +733,16 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
             
             test_results.append(test_result)
         
-        # Step 3: Generate causal analysis using DoWhy
+        
         logger.info(f"Generating causal analysis for experiment {experiment_id}")
         
-        # Create DataFrame from test results
-        logger.info(f"Creating DataFrame from {len(test_results)} test results")
-        print(f"🚀 STARTING CAUSAL ANALYSIS for experiment {experiment_id}")
-        print(f"📊 Test results count: {len(test_results)}")
         df = causal_analysis_engine.create_experiment_dataframe(test_results)
-        print(f"✅ DataFrame created successfully!")
-        logger.info(f"DataFrame created with shape: {df.shape}, columns: {df.columns.tolist()}")
         
-        # Perform causal analysis
-        print(f"🔬 Starting causal effect analysis...")
-        causal_results = causal_analysis_engine.analyze_causal_effect(df, "latency")
-        print(f"✅ Causal effect analysis completed!")
+        # Use multi-metric analysis with improved error handling
+        causal_results = causal_analysis_engine.analyze_multi_metric_causal_effect(df)
         
-        # Analyze multiple endpoints if available
         endpoint_analyses = causal_analysis_engine.analyze_multiple_endpoints(df)
         
-        # Combine results
         combined_causal_results = {
             "overall_analysis": causal_results,
             "endpoint_analyses": endpoint_analyses,
@@ -785,13 +753,11 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
             }
         }
         
-        # Generate human-readable report
         causal_analysis = await causal_analysis_engine.generate_causal_report(
-            combined_causal_results.get("overall_analysis", {}), 
+            causal_results, 
             experiment_request.experiment_description
         )
         
-        # Step 4: Create experiment result
         experiment_result = CausalExperimentResult(
             experiment_id=experiment_id,
             baseline_dsl=experiment_request.baseline_dsl,
@@ -802,7 +768,6 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
             dataframe_info=combined_causal_results.get("dataframe_info", {})
         )
         
-        # Store experiment result
         causal_experiments[experiment_id] = experiment_result
         
         logger.info(f"Completed causal experiment {experiment_id}")
@@ -835,7 +800,7 @@ async def generate_causal_variations(experiment_request: CausalExperimentRequest
     try:
         logger.info(f"Generating DSL variations for experiment")
         
-        # Generate DSL variations using LLM
+        
         variations_response = await llm_service.generate_causal_experiment_variations(
             experiment_request.baseline_dsl,
             experiment_request.experiment_description,

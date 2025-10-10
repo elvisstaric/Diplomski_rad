@@ -16,34 +16,24 @@ class CausalAnalysisEngine:
     def create_experiment_dataframe(self, test_results: List[Dict[str, Any]]) -> pd.DataFrame:
         """Create pandas DataFrame from test results for causal analysis"""
         try:
-            # Debug: Print input test_results
-            print(f"\n=== INPUT TEST_RESULTS DEBUG ===")
-            print(f"Number of test results: {len(test_results)}")
-            for i, result in enumerate(test_results):
-                print(f"Test {i}: {result.get('test_id', 'NO_ID')} - {result.get('variation_name', 'NO_NAME')}")
-                print(f"  Keys: {list(result.keys())}")
-                print(f"  Status: {result.get('status', 'NO_STATUS')}")
-                print(f"  Results: {result.get('results', {})}")
-            print(f"=== END INPUT DEBUG ===\n")
-            
             data_rows = []
             
             for i, result in enumerate(test_results):
-                # Extract basic metrics
+                
                 variation_name = result.get("variation_name", f"variation_{i}")
                 total_requests = result.get("total_requests", 0)
                 success_rate = result.get("success_rate", 0)
                 avg_latency = result.get("avg_latency", 0)
                 failure_rate = result.get("failure_rate", 0)
                 
-                # Determine treatment level based on variation
+                
                 treatment_level = self.extract_treatment_level(variation_name, result)
                 
-                # Extract endpoint-specific data if available
+                
                 results_data = result.get("results", {})
                 endpoint_stats = results_data.get("endpoint_stats", {})
                 
-                # Create rows for each endpoint
+                
                 if endpoint_stats:
                     for endpoint, stats in endpoint_stats.items():
                         endpoint_latency = stats.get("avg_latency", avg_latency)
@@ -58,11 +48,11 @@ class CausalAnalysisEngine:
                             "success_rate": endpoint_success_rate,
                             "error_rate": endpoint_error_rate,
                             "total_requests": total_requests,
-                            "timestamp": i * 30,  # Simulate time progression
+                            "timestamp": i * 30,  
                             "test_id": result.get("test_id", f"test_{i}")
                         })
                 else:
-                    # If no endpoint-specific data, create general row
+                    
                     data_rows.append({
                         "variation_name": variation_name,
                         "treatment": treatment_level,
@@ -78,21 +68,6 @@ class CausalAnalysisEngine:
             df = pd.DataFrame(data_rows)
             self.logger.info(f"Created DataFrame with {len(df)} rows from {len(test_results)} test results")
             
-            # Debug: Print DataFrame info to console
-            print(f"\n=== DATAFRAME DEBUG INFO ===")
-            print(f"DataFrame shape: {df.shape}")
-            print(f"DataFrame columns: {list(df.columns)}")
-            if not df.empty:
-                print(f"Treatment groups: {df['treatment'].value_counts().to_dict()}")
-                print(f"Endpoints: {df['endpoint'].value_counts().to_dict()}")
-                print(f"Sample data:")
-                print(df.head())
-                print(f"Data types:")
-                print(df.dtypes)
-            else:
-                print("DataFrame is EMPTY!")
-            print(f"=== END DATAFRAME DEBUG ===\n")
-            
             return df
             
         except Exception as e:
@@ -103,28 +78,60 @@ class CausalAnalysisEngine:
         """Extract treatment level from variation name and result data"""
         variation_lower = variation_name.lower()
         
-        # Simple test: baseline = 0, everything else = 1
+        
         if "baseline" in variation_lower or "control" in variation_lower:
             return 0
         else:
             return 1
     
+    def analyze_multi_metric_causal_effect(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """Perform multi-metric causal analysis (latency, success_rate, error_rate)"""
+        try:
+            if df.empty:
+                self.logger.warning("Cannot perform multi-metric analysis - DataFrame is empty")
+                return {
+                    "latency_analysis": {"error": "No data available for latency analysis"},
+                    "success_rate_analysis": {"error": "No data available for success rate analysis"},
+                    "error_rate_analysis": {"error": "No data available for error rate analysis"},
+                    "analysis_type": "Multi-Metric Analysis"
+                }
+            
+            if len(df) < 2:
+                self.logger.warning(f"Cannot perform multi-metric analysis - insufficient data (need at least 2 observations, got {len(df)})")
+                return {
+                    "latency_analysis": {"error": f"Insufficient data for latency analysis (need at least 2 observations, got {len(df)})"},
+                    "success_rate_analysis": {"error": f"Insufficient data for success rate analysis (need at least 2 observations, got {len(df)})"},
+                    "error_rate_analysis": {"error": f"Insufficient data for error rate analysis (need at least 2 observations, got {len(df)})"},
+                    "analysis_type": "Multi-Metric Analysis"
+                }
+            
+            latency_results = self.analyze_causal_effect(df, "latency")
+            success_rate_results = self.analyze_causal_effect(df, "success_rate")
+            error_rate_results = self.analyze_causal_effect(df, "error_rate")
+            
+            return {
+                "latency_analysis": latency_results,
+                "success_rate_analysis": success_rate_results,
+                "error_rate_analysis": error_rate_results,
+                "analysis_type": "Multi-Metric Analysis"
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in multi-metric causal analysis: {e}")
+            return {
+                "latency_analysis": {"error": f"Multi-metric analysis failed: {str(e)}"},
+                "success_rate_analysis": {"error": f"Multi-metric analysis failed: {str(e)}"},
+                "error_rate_analysis": {"error": f"Multi-metric analysis failed: {str(e)}"},
+                "analysis_type": "Multi-Metric Analysis"
+            }
+    
     def analyze_causal_effect(self, df: pd.DataFrame, analysis_type: str = "latency") -> Dict[str, Any]:
         """Perform causal analysis using DoWhy"""
-        try:
-            # Debug: Print DataFrame info before analysis
-            print(f"\n=== CAUSAL ANALYSIS DEBUG ===")
-            print(f"Analysis type: {analysis_type}")
-            print(f"DataFrame shape: {df.shape}")
-            if not df.empty:
-                print(f"Treatment groups: {df['treatment'].value_counts().to_dict()}")
-                print(f"Outcome column ({analysis_type}): {df[analysis_type].describe()}")
-            print(f"=== END CAUSAL ANALYSIS DEBUG ===\n")
-            
+        try:            
             if df.empty:
                 return {"error": "No data available for causal analysis"}
             
-            # Prepare data based on analysis type
+            
             if analysis_type == "latency":
                 outcome_col = "latency"
                 analysis_name = "Latency Analysis"
@@ -134,43 +141,61 @@ class CausalAnalysisEngine:
             elif analysis_type == "error_rate":
                 outcome_col = "error_rate"
                 analysis_name = "Error Rate Analysis"
+                
+                if outcome_col in df.columns:
+                    error_rate_values = df[outcome_col].dropna()
+                    if len(error_rate_values) == 0 or error_rate_values.nunique() <= 1:
+                        return {
+                            "analysis_type": analysis_name,
+                            "treatment_variable": "treatment",
+                            "outcome_variable": outcome_col,
+                            "causal_estimate": {},
+                            "refutation_test": {},
+                            "data_summary": {
+                                "total_observations": len(df),
+                                "treatment_groups": df["treatment"].nunique(),
+                                "endpoints": df["endpoint"].nunique(),
+                                "error_rate_stats": {
+                                    "min": error_rate_values.min() if len(error_rate_values) > 0 else 0,
+                                    "max": error_rate_values.max() if len(error_rate_values) > 0 else 0,
+                                    "mean": error_rate_values.mean() if len(error_rate_values) > 0 else 0,
+                                    "unique_values": error_rate_values.nunique()
+                                }
+                            },
+                            "note": "No error rate variation detected - all requests were successful. Causal analysis not applicable for error rate."
+                        }
             else:
                 outcome_col = "latency"
                 analysis_name = "Latency Analysis"
             
-            # Create causal model
+            
             model = CausalModel(
                 data=df,
                 treatment="treatment",
                 outcome=outcome_col,
-                common_causes=[]  # No confounders for now
+                common_causes=[]  
             )
             
-            # Identify causal effect
             identified_estimand = model.identify_effect()
-            logger.info(f"Identified estimand: {identified_estimand}")
-            # Estimate causal effect
+            
             estimate = model.estimate_effect(
                 identified_estimand, 
                 method_name="backdoor.linear_regression"
             )
-            logger.info(f"Estimated effect: {estimate}")
-            # Refute the estimate
+            
             refute = model.refute_estimate(
                 identified_estimand, 
                 estimate, 
                 method_name="placebo_treatment_refuter"
-            )
-            logger.info(f"Tu ti je Estimated effect: {estimate}")
-            logger.info(f"Tu ti je refuted estimate: {refute}")
+            )       
             
-            # Extract results - use full objects instead of specific attributes
+            
             causal_results = {
                 "analysis_type": analysis_name,
                 "treatment_variable": "treatment",
                 "outcome_variable": outcome_col,
-                "causal_estimate": self.serialize_dowhy_object(estimate),  # Convert to serializable format
-                "refutation_test": self.serialize_dowhy_object(refute),      # Convert to serializable format
+                "causal_estimate": self.serialize_dowhy_object(estimate),  
+                "refutation_test": self.serialize_dowhy_object(refute),      
                 "data_summary": {
                     "total_observations": len(df),
                     "treatment_groups": df["treatment"].nunique(),
@@ -201,11 +226,11 @@ class CausalAnalysisEngine:
                 if len(endpoint_df) < 2:
                     continue
                 
-                # Analyze latency for this endpoint
+                
                 latency_analysis = self.analyze_causal_effect(endpoint_df, "latency")
                 endpoint_analyses[f"{endpoint}_latency"] = latency_analysis
                 
-                # Analyze success rate for this endpoint
+                
                 success_analysis = self.analyze_causal_effect(endpoint_df, "success_rate")
                 endpoint_analyses[f"{endpoint}_success"] = success_analysis
             
@@ -213,7 +238,7 @@ class CausalAnalysisEngine:
                 "endpoint_analyses": endpoint_analyses,
                 "summary": {
                     "total_endpoints": len(endpoints),
-                    "analyzed_endpoints": len(endpoint_analyses) // 2  # Each endpoint has 2 analyses
+                    "analyzed_endpoints": len(endpoint_analyses) // 2  
                 }
             }
             
@@ -224,13 +249,18 @@ class CausalAnalysisEngine:
     async def generate_causal_report(self, causal_results: Dict[str, Any], experiment_description: str) -> str:
         """Generate human-readable causal analysis report using LLM"""
         try:
+            
+            if "analysis_type" in causal_results and causal_results["analysis_type"] == "Multi-Metric Analysis":
+                return await self.generate_multi_metric_report(causal_results, experiment_description)
+            
+            
             if "error" in causal_results:
                 return f"# Causal Analysis Report\n\n**Error:** {causal_results['error']}\n"
             
-            # Import LLM service
+            
             from modules.llm_service import llm_service
             
-            # Prepare data for LLM
+            
             llm_data = {
                 "experiment_description": experiment_description,
                 "causal_results": causal_results,
@@ -241,35 +271,104 @@ class CausalAnalysisEngine:
                 "endpoint_analyses": causal_results.get("endpoint_analyses", {})
             }
             
-            # Generate report using LLM
+            
             report_response = await llm_service.generate_causal_report(llm_data)
             
             if report_response["status"] == "success":
                 return report_response["report"]
             else:
-                # Fallback to simple report if LLM fails
-                return self._generate_simple_causal_report(causal_results, experiment_description)
+                
+                return self.generate_simple_causal_report(causal_results, experiment_description)
             
         except Exception as e:
             self.logger.error(f"Error generating causal report with LLM: {e}")
-            # Fallback to simple report
-            return self._generate_simple_causal_report(causal_results, experiment_description)
+            
+            return self.generate_simple_causal_report(causal_results, experiment_description)
     
-    def _generate_simple_causal_report(self, causal_results: Dict[str, Any], experiment_description: str) -> str:
+    async def generate_multi_metric_report(self, causal_results: Dict[str, Any], experiment_description: str) -> str:
+        """Generate report for multi-metric causal analysis"""
+        try:
+            
+            from modules.llm_service import llm_service
+            
+            
+            llm_data = {
+                "experiment_description": experiment_description,
+                "analysis_type": "Multi-Metric Causal Analysis",
+                "latency_analysis": causal_results.get("latency_analysis", {}),
+                "success_rate_analysis": causal_results.get("success_rate_analysis", {}),
+                "error_rate_analysis": causal_results.get("error_rate_analysis", {}),
+                "multi_metric": True
+            }
+            
+            
+            report_response = await llm_service.generate_causal_report(llm_data)
+            
+            if report_response["status"] == "success":
+                return report_response["report"]
+            else:
+
+                return self.generate_simple_multi_metric_report(causal_results, experiment_description)
+            
+        except Exception as e:
+            self.logger.error(f"Error generating multi-metric causal report with LLM: {e}")
+
+            return self.generate_simple_multi_metric_report(causal_results, experiment_description)
+    
+    def generate_simple_multi_metric_report(self, causal_results: Dict[str, Any], experiment_description: str) -> str:
+        """Fallback simple multi-metric causal report generation"""
+        try:
+            report = f"# Multi-Metric Causal Analysis Report\n\n"
+            report += f"**Experiment Description:** {experiment_description}\n\n"
+            
+
+            latency_analysis = causal_results.get("latency_analysis", {})
+            if latency_analysis and "error" not in latency_analysis:
+                report += f"## Latency Analysis\n\n"
+                estimate = latency_analysis.get("causal_estimate", {})
+                report += f"**Causal Effect on Latency:** {estimate}\n\n"
+                refute = latency_analysis.get("refutation_test", {})
+                report += f"**Refutation Test:** {refute}\n\n"
+            
+
+            success_analysis = causal_results.get("success_rate_analysis", {})
+            if success_analysis and "error" not in success_analysis:
+                report += f"## Success Rate Analysis\n\n"
+                estimate = success_analysis.get("causal_estimate", {})
+                report += f"**Causal Effect on Success Rate:** {estimate}\n\n"
+                refute = success_analysis.get("refutation_test", {})
+                report += f"**Refutation Test:** {refute}\n\n"
+            
+
+            error_analysis = causal_results.get("error_rate_analysis", {})
+            if error_analysis and "error" not in error_analysis:
+                report += f"## Error Rate Analysis\n\n"
+                estimate = error_analysis.get("causal_estimate", {})
+                report += f"**Causal Effect on Error Rate:** {estimate}\n\n"
+                refute = error_analysis.get("refutation_test", {})
+                report += f"**Refutation Test:** {refute}\n\n"
+            
+            return report
+            
+        except Exception as e:
+            self.logger.error(f"Error generating simple multi-metric report: {e}")
+            return f"# Multi-Metric Causal Analysis Report\n\n**Error generating report:** {str(e)}\n"
+    
+    def generate_simple_causal_report(self, causal_results: Dict[str, Any], experiment_description: str) -> str:
         """Fallback simple causal report generation"""
         try:
             report = f"# Causal Analysis Report\n\n"
             report += f"**Experiment Description:** {experiment_description}\n\n"
             
-            # Overall analysis
+
             if "analysis_type" in causal_results:
                 report += f"## {causal_results['analysis_type']}\n\n"
                 
-                # Use full estimate object
+
                 estimate = causal_results.get("causal_estimate", {})
                 report += f"**Causal Estimate:** {estimate}\n\n"
                 
-                # Use full refute object
+
                 refute = causal_results.get("refutation_test", {})
                 report += f"**Refutation Test:** {refute}\n\n"
                 
@@ -277,7 +376,7 @@ class CausalAnalysisEngine:
                 report += f"**Total Observations:** {data_summary.get('total_observations', 0)}\n"
                 report += f"**Treatment Groups:** {data_summary.get('treatment_groups', 0)}\n\n"
             
-            # Endpoint-specific analyses
+
             if "endpoint_analyses" in causal_results:
                 report += "## Endpoint-Specific Analyses\n\n"
                 
@@ -293,7 +392,7 @@ class CausalAnalysisEngine:
                     estimate = analysis_data.get("causal_estimate", {})
                     report += f"**Causal Estimate:** {estimate}\n\n"
             
-            # Recommendations
+
             report += "## Recommendations\n\n"
             report += self.generate_recommendations(causal_results)
             
@@ -312,14 +411,14 @@ class CausalAnalysisEngine:
             if obj is None:
                 return {}
             
-            # Prevent infinite recursion by tracking visited objects
+
             obj_id = id(obj)
             if obj_id in visited:
                 return {"circular_reference": str(type(obj).__name__)}
             
             visited.add(obj_id)
             
-            # Try to get common DoWhy attributes first
+
             result = {}
             common_attrs = ['value', 'confidence_intervals', 'p_value', 'method_name', 'refutation_result', 'params']
             
@@ -340,22 +439,22 @@ class CausalAnalysisEngine:
                     except Exception as attr_error:
                         result[attr] = f"Error accessing {attr}: {str(attr_error)}"
             
-            # If we got some attributes, return them
+        
             if result:
                 visited.remove(obj_id)
                 return result
             
-            # Fallback: try to convert to dictionary with limited recursion
+        
             if hasattr(obj, '__dict__'):
                 result = {}
                 for key, value in obj.__dict__.items():
-                    if key.startswith('_'):  # Skip private attributes
+                    if key.startswith('_'):  
                         continue
                     try:
                         if isinstance(value, (str, int, float, bool)):
                             result[key] = value
                         elif isinstance(value, (list, tuple)):
-                            result[key] = [self.serialize_dowhy_object(item, visited) if hasattr(item, '__dict__') else item for item in value[:5]]  # Limit list size
+                            result[key] = [self.serialize_dowhy_object(item, visited) if hasattr(item, '__dict__') else item for item in value[:5]]  
                         elif hasattr(value, '__dict__'):
                             result[key] = self.serialize_dowhy_object(value, visited)
                         else:
@@ -366,7 +465,7 @@ class CausalAnalysisEngine:
                 visited.remove(obj_id)
                 return result
             
-            # Final fallback: string representation
+        
             visited.remove(obj_id)
             return {"string_representation": str(obj), "type": str(type(obj).__name__)}
             
@@ -382,15 +481,15 @@ class CausalAnalysisEngine:
         
         if "causal_estimate" in causal_results:
             estimate = causal_results["causal_estimate"]
-            # Use full estimate object instead of specific attributes
+
             recommendations.append(f"- **Causal Estimate:** {estimate}")
         
         if "refutation_test" in causal_results:
             refute = causal_results["refutation_test"]
-            # Use full refute object instead of specific attributes
+
             recommendations.append(f"- **Refutation Test:** {refute}")
         
         return "\n".join(recommendations) if recommendations else "- Causal analysis completed successfully"
 
-# Create global instance
+
 causal_analysis_engine = CausalAnalysisEngine()

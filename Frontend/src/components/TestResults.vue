@@ -365,30 +365,6 @@
               </div>
             </div>
 
-            <!-- Auth Credentials -->
-            <div
-              v-if="
-                selectedTest.auth_credentials &&
-                Object.keys(selectedTest.auth_credentials).length > 0
-              "
-            >
-              <h4 class="font-medium text-gray-900 mb-3">Authentication</h4>
-              <div class="bg-gray-100 rounded-lg p-3">
-                <div class="text-sm">
-                  <div v-if="selectedTest.auth_credentials.username">
-                    <span class="text-gray-500">Username:</span>
-                    <span class="ml-2 font-mono">{{
-                      selectedTest.auth_credentials.username
-                    }}</span>
-                  </div>
-                  <div v-if="selectedTest.auth_credentials.password">
-                    <span class="text-gray-500">Password:</span>
-                    <span class="ml-2 font-mono">••••••••</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
             <!-- Error Message -->
             <div v-if="selectedTest.error">
               <h4 class="font-medium text-red-900 mb-3">Error</h4>
@@ -529,10 +505,10 @@
           </div>
 
           <div v-else-if="reportContent" class="prose max-w-none">
-            <pre
-              class="whitespace-pre-wrap text-sm font-mono bg-gray-50 p-4 rounded-lg"
-              >{{ reportContent }}</pre
-            >
+            <div
+              class="prose prose-sm max-w-none"
+              v-html="formatMarkdown(reportContent)"
+            ></div>
           </div>
 
           <div v-else class="text-center py-8 text-gray-500">
@@ -756,6 +732,30 @@ export default {
       }
     };
 
+    const formatMarkdown = (text) => {
+      if (!text) return "";
+
+      // Convert markdown to HTML for display
+      return text
+        .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mb-4">$1</h1>')
+        .replace(
+          /^## (.*$)/gim,
+          '<h2 class="text-xl font-semibold mb-3 mt-6">$1</h2>'
+        )
+        .replace(
+          /^### (.*$)/gim,
+          '<h3 class="text-lg font-medium mb-2 mt-4">$1</h3>'
+        )
+        .replace(
+          /^\*\*(.*)\*\*: (.*$)/gim,
+          '<p class="mb-2"><strong class="font-semibold">$1:</strong> $2</p>'
+        )
+        .replace(/^• (.*$)/gim, '<li class="ml-4 mb-1">$1</li>')
+        .replace(/^- (.*$)/gim, '<li class="ml-4 mb-1">$1</li>')
+        .replace(/\n\n/g, '</p><p class="mb-4">')
+        .replace(/\n/g, "<br>");
+    };
+
     return {
       selectedTest,
       openTestDetails,
@@ -779,6 +779,7 @@ export default {
       generateDetailedReport,
       viewReport,
       downloadReport,
+      formatMarkdown,
     };
   },
 };

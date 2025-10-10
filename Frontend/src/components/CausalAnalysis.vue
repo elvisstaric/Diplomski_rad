@@ -1,27 +1,82 @@
 <template>
   <div class="space-y-6">
+    <!-- Saved Causal Experiments -->
+    <div
+      v-if="savedExperiments.length > 0"
+      class="bg-white rounded-lg shadow p-6"
+    >
+      <h2 class="text-xl font-semibold text-gray-900 mb-4">
+        Saved Causal Experiments
+      </h2>
+      <div class="space-y-4">
+        <div
+          v-for="experiment in savedExperiments"
+          :key="experiment.experiment_id"
+          class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+          @click="viewSavedExperiment(experiment)"
+        >
+          <div class="flex justify-between items-start">
+            <div>
+              <h3 class="font-medium text-gray-900">
+                {{ experiment.experiment_id }}
+              </h3>
+              <p class="text-sm text-gray-500">
+                Created: {{ formatDateTime(experiment.generated_at) }}
+              </p>
+              <p class="text-sm text-gray-500">
+                Tests: {{ experiment.number_of_tests }}
+              </p>
+            </div>
+            <span
+              class="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full"
+            >
+              Saved
+            </span>
+          </div>
+          <div class="mt-2">
+            <p class="text-sm text-gray-600 truncate">
+              {{ experiment.baseline_dsl }}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="bg-white rounded-lg shadow p-6">
       <h2 class="text-xl font-semibold text-gray-900 mb-4">Causal Analysis</h2>
 
       <!-- Test Selection -->
       <div class="mb-6">
         <label class="block text-sm font-medium text-gray-700 mb-2">
-          Select Completed Test
+          Select Test for Analysis
         </label>
         <select
           v-model="selectedTestId"
           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="">Choose a completed test...</option>
-          <option
-            v-for="test in completedTests"
-            :key="test.test_id"
-            :value="test.test_id"
-          >
-            {{ test.test_id }} - {{ test.status }} ({{
-              formatDateTime(test.start_time)
-            }})
-          </option>
+          <option value="">Choose a test for analysis...</option>
+          <optgroup label="Completed Tests">
+            <option
+              v-for="test in completedTests"
+              :key="test.test_id"
+              :value="test.test_id"
+            >
+              {{ test.test_id }} - {{ test.status }} ({{
+                formatDateTime(test.start_time)
+              }})
+            </option>
+          </optgroup>
+          <optgroup label="Failed Tests">
+            <option
+              v-for="test in failedTests"
+              :key="test.test_id"
+              :value="test.test_id"
+            >
+              {{ test.test_id }} - {{ test.status }} ({{
+                formatDateTime(test.start_time)
+              }})
+            </option>
+          </optgroup>
         </select>
       </div>
 
@@ -204,7 +259,7 @@
           <div class="flex items-center space-x-2">
             <button
               @click="downloadCausalReport"
-              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center space-x-2"
+              class="btn-secondary text-sm flex items-center space-x-2"
             >
               <svg
                 class="w-4 h-4"
@@ -311,15 +366,135 @@
                 </table>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-            <!-- Download Button -->
-            <div class="flex justify-end">
-              <button
-                @click="downloadReport"
-                class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+    <!-- Saved Experiment Modal -->
+    <div
+      v-if="showSavedExperimentModal"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    >
+      <div
+        class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto"
+      >
+        <div class="p-6">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-semibold text-gray-900">
+              Causal Analysis Results -
+              {{ selectedSavedExperiment?.experiment_id }}
+            </h3>
+            <button
+              @click="showSavedExperimentModal = false"
+              class="text-gray-400 hover:text-gray-600"
+            >
+              <svg
+                class="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                Download Report
-              </button>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                ></path>
+              </svg>
+            </button>
+          </div>
+
+          <div v-if="selectedSavedExperiment" class="space-y-6">
+            <!-- Experiment Info -->
+            <div class="bg-gray-50 p-4 rounded-lg">
+              <h4 class="font-medium text-gray-900 mb-2">Experiment Details</h4>
+              <p class="text-sm text-gray-600">
+                <strong>Created:</strong>
+                {{ formatDateTime(selectedSavedExperiment.generated_at) }}
+              </p>
+              <p class="text-sm text-gray-600">
+                <strong>Number of Tests:</strong>
+                {{ selectedSavedExperiment.number_of_tests }}
+              </p>
+              <p class="text-sm text-gray-600">
+                <strong>Description:</strong>
+                {{ selectedSavedExperiment.description }}
+              </p>
+            </div>
+
+            <!-- Causal Report -->
+            <div
+              v-if="selectedSavedExperiment.causal_analysis"
+              class="space-y-4"
+            >
+              <div class="flex justify-between items-center">
+                <h4 class="font-medium text-gray-900">
+                  Causal Analysis Report
+                </h4>
+                <button
+                  @click="downloadSavedCausalReport(selectedSavedExperiment)"
+                  class="btn-secondary text-sm flex items-center space-x-2"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    ></path>
+                  </svg>
+                  <span>Download Report</span>
+                </button>
+              </div>
+              <div class="bg-white border rounded-lg p-4">
+                <div
+                  v-html="
+                    formatMarkdown(selectedSavedExperiment.causal_analysis)
+                  "
+                  class="prose max-w-none"
+                ></div>
+              </div>
+            </div>
+
+            <!-- Test Results Summary -->
+            <div v-if="selectedSavedExperiment.test_results" class="space-y-4">
+              <h4 class="font-medium text-gray-900">Test Results Summary</h4>
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div
+                  v-for="(
+                    result, index
+                  ) in selectedSavedExperiment.test_results"
+                  :key="index"
+                  class="bg-gray-50 p-4 rounded-lg"
+                >
+                  <h5 class="font-medium text-gray-900 mb-2">
+                    {{ result.variation_name }}
+                  </h5>
+                  <div class="space-y-1 text-sm">
+                    <p><strong>Status:</strong> {{ result.status }}</p>
+                    <p>
+                      <strong>Total Requests:</strong>
+                      {{ result.total_requests }}
+                    </p>
+                    <p>
+                      <strong>Success Rate:</strong> {{ result.success_rate }}%
+                    </p>
+                    <p>
+                      <strong>Avg Latency:</strong>
+                      {{ result.avg_latency?.toFixed(3) }}s
+                    </p>
+                    <p>
+                      <strong>Failure Rate:</strong> {{ result.failure_rate }}%
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -329,7 +504,7 @@
 </template>
 
 <script>
-import { ref, computed } from "vue";
+import { ref, computed, watch, onMounted, onActivated, onUnmounted } from "vue";
 import { causalExperimentApi } from "../services/api";
 
 export default {
@@ -352,6 +527,11 @@ export default {
     const isGeneratingVariations = ref(false);
     const isRunningExperiment = ref(false);
 
+    // Saved experiments
+    const savedExperiments = ref([]);
+    const showSavedExperimentModal = ref(false);
+    const selectedSavedExperiment = ref(null);
+
     const completedTests = computed(() => {
       const completed = props.tests.filter(
         (test) => test.status === "completed"
@@ -367,6 +547,10 @@ export default {
         props.tests.map((t) => ({ id: t.test_id, status: t.status }))
       );
       return completed;
+    });
+
+    const failedTests = computed(() => {
+      return props.tests.filter((test) => test.status === "failed");
     });
 
     const selectedTest = computed(() =>
@@ -432,6 +616,7 @@ export default {
           number_of_tests: numberOfTests.value,
           target_url:
             selectedTest.value.target_url || selectedTest.value.url || "",
+          auth_type: selectedTest.value.auth_type || "none",
           auth_credentials: selectedTest.value.auth_credentials || {},
         };
 
@@ -479,6 +664,7 @@ export default {
           number_of_tests: numberOfTests.value,
           target_url:
             selectedTest.value.target_url || selectedTest.value.url || "",
+          auth_type: selectedTest.value.auth_type || "none",
           auth_credentials: selectedTest.value.auth_credentials || {},
           generated_variations: generatedVariations.value, // Send pre-generated variations
         };
@@ -551,6 +737,79 @@ export default {
         .replace(/\n/g, "<br>");
     };
 
+    // Load saved experiments
+    const loadSavedExperiments = async () => {
+      try {
+        const response = await causalExperimentApi.listExperiments();
+        savedExperiments.value = response.data.experiments || [];
+      } catch (error) {
+        console.error("Error loading saved experiments:", error);
+      }
+    };
+
+    // View saved experiment
+    const viewSavedExperiment = async (experiment) => {
+      try {
+        const response = await causalExperimentApi.getExperiment(
+          experiment.experiment_id
+        );
+        selectedSavedExperiment.value = response.data;
+        showSavedExperimentModal.value = true;
+      } catch (error) {
+        console.error("Error loading experiment details:", error);
+        alert(
+          "Error loading experiment details: " +
+            (error.response?.data?.detail || error.message)
+        );
+      }
+    };
+
+    // Download saved causal report
+    const downloadSavedCausalReport = (experiment) => {
+      if (!experiment.causal_analysis) {
+        alert("No causal analysis report available for this experiment");
+        return;
+      }
+
+      const blob = new Blob([experiment.causal_analysis], {
+        type: "text/markdown",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `causal-analysis-${
+        experiment.experiment_id
+      }-${Date.now()}.md`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+
+    // Load saved experiments on component mount
+    loadSavedExperiments();
+
+    // Set up auto-refresh for saved experiments
+    let refreshInterval = null;
+
+    onMounted(() => {
+      // Refresh saved experiments every 2 seconds
+      refreshInterval = setInterval(() => {
+        loadSavedExperiments();
+      }, 1000);
+    });
+
+    onUnmounted(() => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    });
+
+    // Reload saved experiments when component becomes active (tab switch)
+    onActivated(() => {
+      loadSavedExperiments();
+    });
+
     return {
       selectedTestId,
       experimentDescription,
@@ -563,6 +822,7 @@ export default {
       isGeneratingVariations,
       isRunningExperiment,
       completedTests,
+      failedTests,
       selectedTest,
       canRunExperiment,
       formatDateTime,
@@ -573,6 +833,11 @@ export default {
       runCausalExperiment,
       downloadCausalReport,
       formatMarkdown,
+      savedExperiments,
+      showSavedExperimentModal,
+      selectedSavedExperiment,
+      viewSavedExperiment,
+      downloadSavedCausalReport,
     };
   },
 };

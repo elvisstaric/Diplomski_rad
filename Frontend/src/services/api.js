@@ -49,11 +49,11 @@ export const causalExperimentApi = {
     return api.post("/experiments/causal", experimentData, { timeout: 300000 });
   },
 
-  // Get experiment results
-  getExperiment: (experimentId) => api.get(`/experiments/${experimentId}`),
-
   // List all experiments
   listExperiments: () => api.get("/experiments"),
+
+  // Get specific experiment details
+  getExperiment: (experimentId) => api.get(`/experiments/${experimentId}`),
 
   // Generate variations only (without running tests)
   generateVariations: (data) =>
