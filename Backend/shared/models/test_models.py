@@ -100,7 +100,6 @@ class GenerateDSLRequest(BaseModel):
     api_endpoints: Optional[List[str]] = Field(None, description="API endpoints (optional)")
     user_model: Optional[str] = Field("closed", description="User model type (closed or open)")
     arrival_rate: Optional[float] = Field(None, description="Arrival rate for open model (users per second)")
-    session_duration: Optional[float] = Field(None, description="Session duration for open model (seconds)")
     auto_run: Optional[bool] = Field(False, description="Automatically run test after generating DSL")
     target_url: Optional[str] = Field(None, description="Target URL for auto-run test")
 

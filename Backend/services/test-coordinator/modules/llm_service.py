@@ -19,7 +19,7 @@ class LLMService:
             self.client = AsyncOpenAI(api_key=api_key)
         self.model = "gpt-4o"
     
-    async def generate_dsl_from_description(self, description: str, swagger_docs: str = None, api_endpoints: List[str] = None, user_model: str = "closed", arrival_rate: float = None, session_duration: float = None) -> Dict[str, Any]:
+    async def generate_dsl_from_description(self, description: str, swagger_docs: str = None, api_endpoints: List[str] = None, user_model: str = "closed", arrival_rate: float = None) -> Dict[str, Any]:
         if not self.client:
             return {
                 "dsl_script": "",
@@ -41,7 +41,6 @@ class LLMService:
             User Model: Open Model
             - Use user_model: open
             - Set arrival_rate: {arrival_rate or 2.5} (users per second)
-            - Set session_duration: {session_duration or 45} (average session duration in seconds)
             - Set users: 0 (not relevant for open model)
             """
             else:
@@ -111,7 +110,7 @@ class LLMService:
         try:
             system_prompt = self.get_optimization_system_prompt()
             user_prompt = f"""
-            Optimize the following DSL based on the goal: {optimization_goal}
+            Optimize the following DSL based on the SPECIFIC goal: {optimization_goal}
             
             Existing DSL:
             ```dsl
@@ -119,12 +118,13 @@ class LLMService:
             ```
             
             Your task:
-            1. Analyze the existing DSL
-            2. Suggest improvements for {optimization_goal}
-            3. Generate an optimized version
-            4. Explain key changes
+            1. Analyze ONLY the specific optimization goal: {optimization_goal}
+            2. Make MINIMAL changes - only modify what directly relates to this goal
+            3. DO NOT add new variables, journeys, or parameters unless explicitly requested
+            4. PRESERVE all existing values unless they directly conflict with the optimization goal
+            5. Keep the same structure and format
             
-            Respond with the optimized DSL and a brief explanation of changes.
+            Respond with ONLY the optimized DSL and a brief explanation of the specific changes made for {optimization_goal}.
             """
             
             response = await self.client.chat.completions.create(
@@ -185,7 +185,6 @@ class LLMService:
         - pattern: [pattern_name] - workload pattern
         - user_model: [closed|open] - user model type
         - arrival_rate: [number] - users per second (only for open model)
-        - session_duration: [number] - average session duration in seconds (only for open model)
         - timeout: [number] - request timeout in seconds (default: 30)
         - retry_attempts: [number] - number of retry attempts for failed requests (default: 3)
         - journey: [name] - user journey name
@@ -211,13 +210,20 @@ class LLMService:
         - POST /checkout {"payment_method": "credit_card"}
         end
         
+        journey: checkout_flow
+        - GET /checkout
+        - POST /checkout {"payment_method": "card"}
+        - GET /confirmation
+        end
+        
+        journey_percentages: ecommerce_flow:70,checkout_flow:30
+        
         Open Model:
         users: 0
         duration: 300
         pattern: steady
         user_model: open
         arrival_rate: 2.5
-        session_duration: 45
         timeout: 30
         retry_attempts: 3
         
@@ -225,35 +231,49 @@ class LLMService:
         - GET /products
         - POST /cart {"product_id": 123, "quantity": 1}
         - GET /cart
-        - POST /checkout {"payment_method": "credit_card"}
         end
+        
+        journey: checkout_flow
+        - GET /checkout
+        - POST /checkout {"payment_method": "card"}
+        - GET /confirmation
+        end
+        
+        journey_percentages: ecommerce_flow:70,checkout_flow:30
         """
     
     def get_optimization_system_prompt(self):
         return """
         You are an expert in optimizing DSL scripts for performance testing.
         
-        Your task is to analyze existing DSL and suggest improvements for:
-        - Increasing test performance
-        - More realistic user journeys
-        - Better workload patterns
-        - Optimizing number of users and duration
-        - Adding validation steps
-        - Choosing appropriate user model (closed vs open)
-        - Optimizing arrival rates and session durations for open model
+        CRITICAL RULES:
+        1. ONLY modify what is specifically requested in the optimization goal
+        2. DO NOT add new variables or parameters unless explicitly requested
+        3. DO NOT change user_model unless specifically asked
+        4. DO NOT add new journeys unless specifically requested
+        5. DO NOT modify existing journey steps unless optimization goal requires it
+        6. PRESERVE all existing values unless optimization goal specifically targets them
         
-        Available DSL parameters:
+        Your task is to analyze existing DSL and suggest improvements ONLY for the specific optimization goal provided.
+        
+        Available DSL parameters (use only if optimization goal requires changes):
         - users: [number] - number of simulated users (0 for open model)
         - duration: [number] - duration in seconds
         - pattern: [pattern_name] - workload pattern (steady, burst, ramp_up, daily_cycle, spike, gradual_ramp)
         - user_model: [closed|open] - user model type
         - arrival_rate: [number] - users per second (only for open model)
-        - session_duration: [number] - average session duration in seconds (only for open model)
         - timeout: [number] - request timeout in seconds (default: 30)
         - retry_attempts: [number] - number of retry attempts for failed requests (default: 3)
+        - auth_type: [none|basic|bearer|session] - authentication type
+        - journey_percentages: [journey_name:percentage] - distribution of users across journeys
         
-        Always maintain the basic DSL structure and add only meaningful improvements.
-        Consider switching between closed and open models based on the optimization goal.
+        IMPORTANT: 
+        - Keep the same structure and format as the original DSL
+        - Only change values that directly relate to the optimization goal
+        - If optimization goal is about performance, focus on users, duration, pattern, timeout, retry_attempts
+        - If optimization goal is about authentication, focus on auth_type and auth_credentials
+        - If optimization goal is about user distribution, focus on journey_percentages
+        - Do NOT add new parameters or journeys unless explicitly requested
         """
     
     async def generate_detailed_report(self, analysis_data: Dict[str, Any]):
@@ -323,9 +343,9 @@ class LLMService:
         - Total Requests: {test_summary.get('total_requests', 0)}
         - Successful Requests: {test_summary.get('successful_requests', 0)} ({test_summary.get('success_rate', 0)}%)
         - Failed Requests: {test_summary.get('failed_requests', 0)} ({test_summary.get('failure_rate', 0)}%)
-        - Average Latency: {test_summary.get('avg_latency', 0)}s
-        - Maximum Latency: {test_summary.get('max_latency', 0)}s
-        - Minimum Latency: {test_summary.get('min_latency', 0)}s
+        - Average Latency: {test_summary.get('avg_latency', 0)}ms
+        - Maximum Latency: {test_summary.get('max_latency', 0)}ms
+        - Minimum Latency: {test_summary.get('min_latency', 0)}ms
         - Requests per Second: {test_summary.get('requests_per_second', 0)}
         
         **ENDPOINT STATISTICS:**

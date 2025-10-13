@@ -69,48 +69,6 @@
           </div>
         </div>
 
-        <!-- Open Model Configuration -->
-        <div
-          v-if="formData.userModel === 'open'"
-          class="space-y-4 p-4 bg-green-50 rounded-lg"
-        >
-          <h3 class="font-medium text-gray-900">Open Model Configuration</h3>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="form-label">Arrival Rate (users/second)</label>
-              <input
-                v-model.number="formData.arrivalRate"
-                type="number"
-                step="0.1"
-                min="0.1"
-                max="100"
-                class="form-input"
-                placeholder="2.5"
-              />
-              <p class="text-sm text-gray-500 mt-1">
-                How many users arrive per second
-              </p>
-            </div>
-
-            <div>
-              <label class="form-label">Session Duration (seconds)</label>
-              <input
-                v-model.number="formData.sessionDuration"
-                type="number"
-                step="1"
-                min="1"
-                max="3600"
-                class="form-input"
-                placeholder="45"
-              />
-              <p class="text-sm text-gray-500 mt-1">
-                Average session duration per user
-              </p>
-            </div>
-          </div>
-        </div>
-
         <!-- LLM Configuration (shown when LLM is selected) -->
         <div
           v-if="formData.dslMethod === 'llm'"
@@ -193,7 +151,7 @@
             v-model="formData.dslScript"
             class="form-input font-mono text-sm"
             rows="15"
-            placeholder="users: 10&#10;duration: 300&#10;pattern: steady&#10;&#10;journey: test_flow&#10;- GET /api/test&#10;end"
+            :placeholder="dslTemplate"
           ></textarea>
 
           <!-- Optimization Instructions -->
@@ -574,7 +532,7 @@
 </template>
 
 <script>
-import { ref, reactive } from "vue";
+import { ref, reactive, computed, watch } from "vue";
 import { testApi, dslApi } from "../services/api";
 
 export default {
@@ -597,24 +555,11 @@ export default {
       dslMethod: "manual",
       userModel: "closed",
       arrivalRate: 2.5,
-      sessionDuration: 45,
       description: "",
       swaggerDocs: "",
       apiEndpoints: [""],
       reviewDsl: true,
-      dslScript: `users: 10
-duration: 300
-pattern: steady
-user_model: closed
-auth_type: none
-
-timeout: 30
-retry_attempts: 3
-
-journey: test_flow
-- GET /api/test
-end`,
-      optimizationInstructions: "",
+      dslScript: "",
       authType: "none",
       authCredentials: {
         username: "",
@@ -623,6 +568,70 @@ end`,
         loginEndpoint: "",
       },
     });
+
+    // Computed property for DSL template based on user model
+    const dslTemplate = computed(() => {
+      if (formData.userModel === "open") {
+        return `arrival_rate: 2.5
+duration: 300
+pattern: steady
+user_model: open
+auth_type: none
+
+timeout: 30
+retry_attempts: 3
+
+journey: ecommerce_flow
+- GET /products
+- POST /cart {"product_id": 123, "quantity": 1}
+- GET /cart
+end
+
+journey: checkout_flow
+- GET /checkout
+- POST /checkout {"payment_method": "card"}
+- GET /confirmation
+end
+
+journey_percentages: ecommerce_flow:70,checkout_flow:30`;
+      } else {
+        return `users: 10
+duration: 300
+pattern: steady
+user_model: closed
+auth_type: none
+
+timeout: 30
+retry_attempts: 3
+
+journey: ecommerce_flow
+- GET /products
+- POST /cart {"product_id": 123, "quantity": 1}
+- GET /cart
+end
+
+journey: checkout_flow
+- GET /checkout
+- POST /checkout {"payment_method": "card"}
+- GET /confirmation
+end
+
+journey_percentages: ecommerce_flow:70,checkout_flow:30`;
+      }
+    });
+
+    // Watch for user model changes and update DSL script
+    watch(
+      () => formData.userModel,
+      (newModel) => {
+        if (formData.dslMethod === "manual") {
+          formData.dslScript = dslTemplate.value;
+        }
+      }
+    );
+
+    // Initialize DSL script with template
+    formData.dslScript = dslTemplate.value;
 
     const addEndpoint = () => {
       formData.apiEndpoints.push("");
@@ -735,8 +744,6 @@ end`,
           user_model: formData.userModel,
           arrival_rate:
             formData.userModel === "open" ? formData.arrivalRate : null,
-          session_duration:
-            formData.userModel === "open" ? formData.sessionDuration : null,
           target_url: formData.targetUrl,
           auto_run: false,
         };
@@ -796,7 +803,7 @@ end`,
           const updatedLines = [];
           let userModelAdded = false;
           let arrivalRateAdded = false;
-          let sessionDurationAdded = false;
+          let authTypeAdded = false;
 
           for (const line of lines) {
             if (line.trim().startsWith("user_model:")) {
@@ -805,11 +812,12 @@ end`,
             } else if (line.trim().startsWith("arrival_rate:")) {
               updatedLines.push(`arrival_rate: ${formData.arrivalRate}`);
               arrivalRateAdded = true;
+            } else if (line.trim().startsWith("auth_type:")) {
+              updatedLines.push(`auth_type: ${formData.authType}`);
+              authTypeAdded = true;
             } else if (line.trim().startsWith("session_duration:")) {
-              updatedLines.push(
-                `session_duration: ${formData.sessionDuration}`
-              );
-              sessionDurationAdded = true;
+              // Skip session_duration lines
+              continue;
             } else {
               updatedLines.push(line);
             }
@@ -821,8 +829,28 @@ end`,
           if (!arrivalRateAdded && formData.userModel === "open") {
             updatedLines.push(`arrival_rate: ${formData.arrivalRate}`);
           }
-          if (!sessionDurationAdded && formData.userModel === "open") {
-            updatedLines.push(`session_duration: ${formData.sessionDuration}`);
+          if (!authTypeAdded) {
+            updatedLines.push(`auth_type: ${formData.authType}`);
+          }
+
+          dslScript = updatedLines.join("\n");
+        } else {
+          // For closed model, also add auth_type if not present
+          const lines = dslScript.split("\n");
+          const updatedLines = [];
+          let authTypeAdded = false;
+
+          for (const line of lines) {
+            if (line.trim().startsWith("auth_type:")) {
+              updatedLines.push(`auth_type: ${formData.authType}`);
+              authTypeAdded = true;
+            } else {
+              updatedLines.push(line);
+            }
+          }
+
+          if (!authTypeAdded) {
+            updatedLines.push(`auth_type: ${formData.authType}`);
           }
 
           dslScript = updatedLines.join("\n");

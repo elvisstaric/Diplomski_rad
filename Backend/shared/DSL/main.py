@@ -10,23 +10,23 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
             "workload_pattern": "steady",
             "user_model": "closed",
             "arrival_rate": None,
-            "session_duration": None,
             "auth_type": "none",
             "auth_endpoint": None,
             "timeout": 30,
             "retry_attempts": 3,
             "steps": [],
-            "user_journey": []
+            "user_journey": [],
+            "journey_percentages": {}
         }
     
     steps = []
     user_journey = []
+    journey_percentages = {}
     num_users = 1
     test_duration = 60
     workload_pattern = "steady"
     user_model = "closed"
     arrival_rate = None
-    session_duration = None
     auth_type = "none"
     auth_endpoint = None
     timeout = 30
@@ -65,11 +65,6 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
                 arrival_rate = float(line.split(":")[1].strip())
             except (ValueError, IndexError):
                 arrival_rate = None
-        elif line.startswith("session_duration:"):
-            try:
-                session_duration = float(line.split(":")[1].strip())
-            except (ValueError, IndexError):
-                session_duration = None
         elif line.startswith("auth_type:"):
             auth_type_value = line.split(":")[1].strip()
             if auth_type_value in ["none", "basic", "bearer", "session"]:
@@ -140,6 +135,16 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
                 "repeat": 1,
             }
             user_journey.append(current_journey_step)
+        elif line.startswith("journey_percentages:"):
+            try:
+                percentages_str = line.split(":", 1)[1].strip()
+                # Parse format: "journey1:50,journey2:30,journey3:20"
+                for pair in percentages_str.split(","):
+                    if ":" in pair:
+                        journey_name, percentage = pair.strip().split(":", 1)
+                        journey_percentages[journey_name.strip()] = float(percentage.strip())
+            except (ValueError, IndexError):
+                pass
         elif line.startswith("repeat:"):
             if current_journey_step:
                 try:
@@ -186,12 +191,12 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
         "workload_pattern": workload_pattern,
         "user_model": user_model,
         "arrival_rate": arrival_rate,
-        "session_duration": session_duration,
         "auth_type": auth_type,
         "auth_endpoint": auth_endpoint,
         "timeout": timeout,
         "retry_attempts": retry_attempts,
         "pattern_config": pattern_config,
         "steps": steps,
-        "user_journey": user_journey
+        "user_journey": user_journey,
+        "journey_percentages": journey_percentages
     }

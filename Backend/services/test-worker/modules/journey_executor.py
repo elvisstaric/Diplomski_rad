@@ -125,7 +125,7 @@ async def execute_with_graceful_degradation(session, target_url: str, endpoint: 
                 return DegradationStrategy.SKIP_STEP
             
             request_end = time.time()
-            latency = request_end - request_start
+            latency = (request_end - request_start) * 1000  
             
             if status_ok:
                 requests[0] += 1
@@ -195,25 +195,73 @@ async def execute_with_graceful_degradation(session, target_url: str, endpoint: 
 async def execute_user_journey(session, target_url: str, user_journey: List[Dict], 
                               requests, successful, failed, latencies, errors,
                               auth_type: str = "none", auth_credentials: Optional[Dict] = None,
-                              auth_endpoint: Optional[str] = None, timeout: int = 30, retry_attempts: int = 3, user_id: int = 0):
+                              auth_endpoint: Optional[str] = None, timeout: int = 30, retry_attempts: int = 3, 
+                              user_id: int = 0, journey_percentages: Dict[str, float] = None):
     
     auth = await setup_auth(session, target_url, auth_type, auth_credentials, auth_endpoint)
     
+    # If journey_percentages is defined, select journey based on percentages
+    if journey_percentages and user_journey:
+        selected_journey = select_journey_by_percentage(user_journey, journey_percentages, user_id)
+        if selected_journey:
+            await execute_single_journey(session, target_url, selected_journey, requests, successful, failed, latencies, errors, auth, timeout, retry_attempts, user_id)
+        return
+    
+    # Default behavior: execute all journeys
     for journey_step in user_journey:
-        repeat_count = journey_step.get("repeat", 1)
-        for _ in range(repeat_count):
-            for step in journey_step["steps"]:
-                strategy = await execute_with_graceful_degradation(
-                    session, target_url, step, requests, successful, failed, latencies, errors, 
-                    auth, timeout, retry_attempts, user_id
-                )
-                
-                if strategy == DegradationStrategy.TERMINATE_JOURNEY:
-                    logger.warning(f"Terminating journey for user {user_id} due to critical error")
-                    return
-                elif strategy == DegradationStrategy.SKIP_STEP:
-                    logger.info(f"Skipping step {step.get('path', 'unknown')} for user {user_id}")
-                    continue
+        await execute_single_journey(session, target_url, journey_step, requests, successful, failed, latencies, errors, auth, timeout, retry_attempts, user_id)
+
+async def execute_single_journey(session, target_url: str, journey_step: Dict, 
+                               requests, successful, failed, latencies, errors, auth, 
+                               timeout: int = 30, retry_attempts: int = 3, user_id: int = 0):
+    repeat_count = journey_step.get("repeat", 1)
+    for _ in range(repeat_count):
+        for step in journey_step["steps"]:
+            strategy = await execute_with_graceful_degradation(
+                session, target_url, step, requests, successful, failed, latencies, errors, 
+                auth, timeout, retry_attempts, user_id
+            )
+            
+            if strategy == DegradationStrategy.TERMINATE_JOURNEY:
+                logger.warning(f"Terminating journey for user {user_id} due to critical error")
+                return
+            elif strategy == DegradationStrategy.SKIP_STEP:
+                logger.info(f"Skipping step {step.get('path', 'unknown')} for user {user_id}")
+                continue
+
+def select_journey_by_percentage(user_journey: List[Dict], journey_percentages: Dict[str, float], user_id: int) -> Optional[Dict]:
+    """
+    Select a journey based on percentages and user_id for consistent assignment.
+    """
+    if not journey_percentages or not user_journey:
+        return None
+    
+    # Create a list of journeys with their percentages
+    journey_list = []
+    for journey in user_journey:
+        journey_name = journey.get("name", "")
+        percentage = journey_percentages.get(journey_name, 0)
+        if percentage > 0:
+            journey_list.append((journey, percentage))
+    
+    if not journey_list:
+        return None
+    
+    # Use user_id as seed for consistent assignment
+    import random
+    random.seed(user_id)
+    
+    # Generate random number and select journey based on cumulative percentages
+    rand_value = random.random() * 100
+    cumulative = 0
+    
+    for journey, percentage in journey_list:
+        cumulative += percentage
+        if rand_value <= cumulative:
+            return journey
+    
+    # Fallback to first journey
+    return journey_list[0][0]
 
 async def execute_single_step(session, target_url: str, endpoint: Dict, 
                              requests, successful, failed, latencies, errors, auth=None, timeout=30, retry_attempts=3, user_id=0):
@@ -262,7 +310,7 @@ async def execute_single_step(session, target_url: str, endpoint: Dict,
                 return
             
             request_end = time.time()
-            latency = request_end - request_start
+            latency = (request_end - request_start) * 1000  # Convert to milliseconds
             
             if status_ok:
                 requests[0] += 1
@@ -312,8 +360,10 @@ async def execute_single_step(session, target_url: str, endpoint: Dict,
 
 async def setup_auth(session, target_url: str, auth_type: str, auth_credentials: Optional[Dict], auth_endpoint: Optional[str]):
     
+    logger.info(f"setup_auth called - auth_type: {auth_type}, auth_credentials: {auth_credentials}, auth_endpoint: {auth_endpoint}")
     
     if auth_type == "none" or not auth_credentials:
+        logger.info("No auth needed or no credentials provided")
         return None
     
     if auth_type == "basic":
@@ -325,8 +375,12 @@ async def setup_auth(session, target_url: str, auth_type: str, auth_credentials:
     
     elif auth_type == "bearer":
         token = auth_credentials.get('token')
+        logger.info(f"Bearer auth - token: {token}")
         if token:
-            return {"Authorization": f"Bearer {token}"}
+            auth_header = {"Authorization": f"Bearer {token}"}
+            logger.info(f"Bearer auth header: {auth_header}")
+            return auth_header
+        logger.warning("Bearer token not found in credentials")
         return None
     
     elif auth_type == "session":

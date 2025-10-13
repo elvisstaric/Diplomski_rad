@@ -312,8 +312,7 @@ async def generate_dsl(request: GenerateDSLRequest):
                     request.swagger_docs,
                     request.api_endpoints,
                     request.user_model,
-                    request.arrival_rate,
-                    request.session_duration
+                    request.arrival_rate
                 )
         
         if result["status"] == "error":
@@ -558,6 +557,7 @@ async def get_report_content(test_id: str):
 
 @app.post("/experiments/causal")
 async def run_causal_experiment(experiment_request: CausalExperimentRequest):
+    logger.info(f"Received causal experiment request - auth_type: {experiment_request.auth_type}, auth_credentials: {experiment_request.auth_credentials}")
     """Run a causal inference experiment with multiple test variations"""
     try:
         experiment_id = str(uuid.uuid4())
@@ -604,6 +604,9 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
                 parsed_dsl=parsed_dsl
             )
             
+            logger.info(f"Causal test {i+1} - TestRequest auth_type: {test_request.auth_type}, auth_credentials: {test_request.auth_credentials}")
+            logger.info(f"Causal test {i+1} - experiment_request auth_type: {experiment_request.auth_type}, auth_credentials: {experiment_request.auth_credentials}")
+            
             
             test_id = test_request.test_id
             
@@ -649,9 +652,12 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
                     "dsl_script": test_request.dsl_script,
                     "parsed_dsl": dsl_data,
                     "target_url": test_request.target_url,
+                    "auth_type": test_request.auth_type,
                     "auth_credentials": test_request.auth_credentials,
                     "ping_result": {"available": True, "latency_ms": 0}  
                 }
+                
+                logger.info(f"Sending test_task for causal test {i+1} - auth_type: {test_task['auth_type']}, auth_credentials: {test_task['auth_credentials']}")
                 
                 await channel.default_exchange.publish(
                     aio_pika.Message(
@@ -695,7 +701,7 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
                     "status": "completed",
                     "total_requests": test_status.results.get("total_requests", 0),
                     "success_rate": test_status.results.get("success_rate", 0),
-                    "avg_latency": test_status.results.get("avg_latency", 0),
+                    "avg_latency": round(test_status.results.get("avg_latency", 0), 2),
                     "failure_rate": test_status.results.get("failure_rate", 0),
                     "error_categories": test_status.results.get("error_categories", {}),
                     "results": test_status.results
@@ -710,7 +716,7 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
                     "status": "failed",
                     "total_requests": test_status.results.get("total_requests", 0),
                     "success_rate": test_status.results.get("success_rate", 0),
-                    "avg_latency": test_status.results.get("avg_latency", 0),
+                    "avg_latency": round(test_status.results.get("avg_latency", 0), 2),
                     "failure_rate": test_status.results.get("failure_rate", 0),
                     "error_categories": test_status.results.get("error_categories", {}),
                     "results": test_status.results

@@ -122,7 +122,9 @@
                 </td>
                 <td class="px-4 py-2">{{ result.total_requests }}</td>
                 <td class="px-4 py-2">{{ result.success_rate }}%</td>
-                <td class="px-4 py-2">{{ result.avg_latency }}s</td>
+                <td class="px-4 py-2">
+                  {{ (result.avg_latency || 0).toFixed(2) }}ms
+                </td>
                 <td class="px-4 py-2">{{ result.failure_rate }}%</td>
               </tr>
             </tbody>

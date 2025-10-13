@@ -81,11 +81,12 @@ async def run_performance_test(test_task: Dict[str, Any]):
         workload_pattern = dsl_data.get("workload_pattern", "steady")
         user_model = dsl_data.get("user_model", "closed")
         arrival_rate = dsl_data.get("arrival_rate")
-        session_duration = dsl_data.get("session_duration")
      
         auth_type = test_task.get("auth_type", dsl_data.get("auth_type", "none"))
         auth_credentials = test_task.get("auth_credentials", {})
         auth_endpoint=auth_credentials.get("loginEndpoint")
+        
+        logger.info(f"Received test_task - auth_type: {auth_type}, auth_credentials: {auth_credentials}, auth_endpoint: {auth_endpoint}")
         
         timeout = dsl_data.get("timeout", 30)
         retry_attempts = dsl_data.get("retry_attempts", 3)
@@ -102,7 +103,7 @@ async def run_performance_test(test_task: Dict[str, Any]):
         pattern_config = dsl_data.get("pattern_config", {})
         workload_generator = WorkloadGenerator(
             workload_pattern, num_users, test_duration, pattern_config,
-            user_model, arrival_rate, session_duration
+            user_model, arrival_rate
         )
         
         progress_update_interval = max(1, test_duration // 10) 
@@ -192,13 +193,12 @@ async def run_open_model_test(test_task: Dict[str, Any], dsl_data: Dict[str, Any
             arrival_probability = min(arrival_rate * 0.1, 1.0)
             if random.random() < arrival_probability:  
                 user_id = len(active_users)
-                session_duration = workload_generator.get_session_duration()
                 task = asyncio.create_task(
                     simulate_user_session(user_id, target_url, test_task, workload_generator, 
-                                        start_time, session_duration, auth_type, auth_credentials, auth_endpoint, timeout, retry_attempts)
+                                        start_time, auth_type, auth_credentials, auth_endpoint, timeout, retry_attempts)
                 )
                 active_users.append(task)
-                logger.info(f"Started user session {user_id} (arrival_rate: {arrival_rate}, session_duration: {session_duration:.1f}s, elapsed: {elapsed:.1f}s)")
+                logger.info(f"Started user session {user_id} (arrival_rate: {arrival_rate}, elapsed: {elapsed:.1f}s)")
             
             active_users = [task for task in active_users if not task.done()]
             
@@ -227,7 +227,7 @@ async def run_open_model_test(test_task: Dict[str, Any], dsl_data: Dict[str, Any
 
 async def simulate_user_session(user_id: int, target_url: str, test_task: Dict[str, Any], 
                               workload_generator: 'WorkloadGenerator', start_time: datetime, 
-                              session_duration: float, auth_type: str = "none", 
+                              auth_type: str = "none", 
                               auth_credentials: Dict = None, auth_endpoint: str = None,
                               timeout: int = 30, retry_attempts: int = 3):
     requests = [0]
@@ -240,16 +240,14 @@ async def simulate_user_session(user_id: int, target_url: str, test_task: Dict[s
     dsl_data = parse_dsl(dsl_script)
     steps = dsl_data.get("steps", [])
     user_journey = dsl_data.get("user_journey", [])
-    
-    session_start = datetime.now()
+    test_duration = dsl_data.get("test_duration", 60)
     
     async with aiohttp.ClientSession() as session:
         while True:
-            elapsed_session = (datetime.now() - session_start).total_seconds()
-            if elapsed_session >= session_duration:
-                break
-            
             elapsed_test = (datetime.now() - start_time).total_seconds()
+            if elapsed_test >= test_duration:
+                break
+                
             workload_generator.update_time(elapsed_test)
             
             delay = workload_generator.get_next_delay()
@@ -257,9 +255,10 @@ async def simulate_user_session(user_id: int, target_url: str, test_task: Dict[s
                 await asyncio.sleep(delay)
             
         if user_journey:
+            journey_percentages = dsl_data.get("journey_percentages", {})
             await execute_user_journey(session, target_url, user_journey, 
                                      requests, successful, failed, latencies, errors,
-                                     auth_type, auth_credentials, auth_endpoint, timeout, retry_attempts, user_id)
+                                     auth_type, auth_credentials, auth_endpoint, timeout, retry_attempts, user_id, journey_percentages)
         else:
             endpoint = random.choice(steps)
             auth = await setup_auth(session, target_url, auth_type, auth_credentials, auth_endpoint)
@@ -313,9 +312,10 @@ async def simulate_user_journey(user_id: int, target_url: str, test_task: Dict[s
                 await asyncio.sleep(delay)
 
         if user_journey:
+            journey_percentages = dsl_data.get("journey_percentages", {})
             await execute_user_journey(session, target_url, user_journey, 
                                      requests, successful, failed, latencies, errors,
-                                     auth_type, auth_credentials, auth_endpoint, timeout, retry_attempts, user_id)
+                                     auth_type, auth_credentials, auth_endpoint, timeout, retry_attempts, user_id, journey_percentages)
         else:
             endpoint = random.choice(steps)
             strategy = await execute_with_graceful_degradation(

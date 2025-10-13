@@ -122,19 +122,19 @@
             </div>
             <div class="text-center p-3 bg-green-50 rounded-lg">
               <div class="text-2xl font-bold text-green-600">
-                {{ test.results.min_latency.toFixed(5) || 0 }}
+                {{ (test.results.min_latency || 0).toFixed(2) }}ms
               </div>
               <div class="text-sm text-green-800">Min Latency</div>
             </div>
             <div class="text-center p-3 bg-blue-50 rounded-lg">
               <div class="text-2xl font-bold text-blue-600">
-                {{ test.results.avg_latency.toFixed(5) || 0 }}
+                {{ (test.results.avg_latency || 0).toFixed(2) }}ms
               </div>
               <div class="text-sm text-blue-800">Average Latency</div>
             </div>
             <div class="text-center p-3 bg-red-50 rounded-lg">
               <div class="text-2xl font-bold text-red-600">
-                {{ test.results.max_latency.toFixed(5) || 0 }}
+                {{ (test.results.max_latency || 0).toFixed(2) }}ms
               </div>
               <div class="text-sm text-red-800">Max Latency</div>
             </div>

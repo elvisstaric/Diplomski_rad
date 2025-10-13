@@ -487,7 +487,7 @@
                     </p>
                     <p>
                       <strong>Avg Latency:</strong>
-                      {{ result.avg_latency?.toFixed(3) }}s
+                      {{ (result.avg_latency || 0).toFixed(2) }}ms
                     </p>
                     <p>
                       <strong>Failure Rate:</strong> {{ result.failure_rate }}%
@@ -606,17 +606,22 @@ export default {
       try {
         isGeneratingVariations.value = true;
 
+        // Extract auth_type from DSL script
+        const dslScript =
+          selectedTest.value.dsl_script ||
+          selectedTest.value.dsl ||
+          selectedTest.value.script ||
+          "";
+        const authTypeMatch = dslScript.match(/auth_type:\s*(\w+)/);
+        const authType = authTypeMatch ? authTypeMatch[1] : "none";
+
         const experimentData = {
-          baseline_dsl:
-            selectedTest.value.dsl_script ||
-            selectedTest.value.dsl ||
-            selectedTest.value.script ||
-            "",
+          baseline_dsl: dslScript,
           experiment_description: experimentDescription.value,
           number_of_tests: numberOfTests.value,
           target_url:
             selectedTest.value.target_url || selectedTest.value.url || "",
-          auth_type: selectedTest.value.auth_type || "none",
+          auth_type: authType,
           auth_credentials: selectedTest.value.auth_credentials || {},
         };
 
@@ -654,20 +659,35 @@ export default {
       try {
         isRunningExperiment.value = true;
 
+        // Extract auth_type from DSL script
+        const dslScript =
+          selectedTest.value.dsl_script ||
+          selectedTest.value.dsl ||
+          selectedTest.value.script ||
+          "";
+        const authTypeMatch = dslScript.match(/auth_type:\s*(\w+)/);
+        const authType = authTypeMatch ? authTypeMatch[1] : "none";
+
         const experimentData = {
-          baseline_dsl:
-            selectedTest.value.dsl_script ||
-            selectedTest.value.dsl ||
-            selectedTest.value.script ||
-            "",
+          baseline_dsl: dslScript,
           experiment_description: experimentDescription.value,
           number_of_tests: numberOfTests.value,
           target_url:
             selectedTest.value.target_url || selectedTest.value.url || "",
-          auth_type: selectedTest.value.auth_type || "none",
+          auth_type: authType,
           auth_credentials: selectedTest.value.auth_credentials || {},
           generated_variations: generatedVariations.value, // Send pre-generated variations
         };
+
+        console.log("🔍 Sending experiment data:", experimentData);
+        console.log(
+          "🔍 Selected test auth_type:",
+          selectedTest.value.auth_type
+        );
+        console.log(
+          "🔍 Selected test auth_credentials:",
+          selectedTest.value.auth_credentials
+        );
 
         const response = await causalExperimentApi.runExperiment(
           experimentData
