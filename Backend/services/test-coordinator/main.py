@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
     global rabbitmq_connection, test_queue
     try:
         rabbitmq_connection = await aio_pika.connect_robust(
-            "amqp://guest:guest@localhost/"
+            os.getenv("RABBITMQ_URL", "amqp://admin:admin123@localhost:5672/")
         )
         channel = await rabbitmq_connection.channel()
         test_queue = await channel.declare_queue("test_tasks", durable=True)
@@ -643,7 +643,9 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
             
             
             try:
-                connection = await aio_pika.connect_robust("amqp://localhost")
+                connection = await aio_pika.connect_robust(
+                    os.getenv("RABBITMQ_URL", "amqp://admin:admin123@localhost:5672/")
+                )
                 channel = await connection.channel()
                 
                 
@@ -854,4 +856,4 @@ async def list_causal_experiments():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

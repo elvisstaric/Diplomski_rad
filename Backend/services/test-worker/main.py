@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
     global rabbitmq_connection, test_queue
     try:
         rabbitmq_connection = await aio_pika.connect_robust(
-            "amqp://guest:guest@localhost/"
+            os.getenv("RABBITMQ_URL", "amqp://admin:admin123@localhost:5672/")
         )
         channel = await rabbitmq_connection.channel()
         test_queue = await channel.declare_queue("test_tasks", durable=True)
@@ -350,7 +350,7 @@ async def simulate_user_journey(user_id: int, target_url: str, test_task: Dict[s
 async def send_results_to_coordinator(test_result: TestResult):
     try:
         async with aiohttp.ClientSession() as session:
-            coordinator_url = "http://localhost:8001"
+            coordinator_url = os.getenv("COORDINATOR_URL", "http://test-coordinator:8000")
 
             result_data = test_result.model_dump()
             if result_data.get("start_time"):
@@ -389,7 +389,7 @@ async def track_progress(test_id: str, start_time: datetime, test_duration: int,
 async def send_progress_update(test_id: str, progress: float):
     try:
         async with aiohttp.ClientSession() as session:
-            coordinator_url = "http://localhost:8001"
+            coordinator_url = os.getenv("COORDINATOR_URL", "http://test-coordinator:8000")
             progress_data = {
                 "progress": progress,
                 "timestamp": datetime.now().isoformat()
@@ -409,7 +409,7 @@ async def send_progress_update(test_id: str, progress: float):
 async def send_error_to_coordinator(test_id: str, error_message: str):
     try:
         async with aiohttp.ClientSession() as session:
-            coordinator_url = "http://localhost:8001"
+            coordinator_url = os.getenv("COORDINATOR_URL", "http://test-coordinator:8000")
             error_data = {
                 "error": error_message,
                 "timestamp": datetime.now().isoformat()
@@ -446,4 +446,5 @@ async def get_worker_stats():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    port = int(os.getenv("WORKER_PORT", 8001))
+    uvicorn.run(app, host="0.0.0.0", port=port)

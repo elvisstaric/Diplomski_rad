@@ -1,0 +1,142 @@
+version: "3.8"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: performance-test-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - performance-test-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Test Coordinator
+  test-coordinator:
+    build:
+      context: .
+      dockerfile: ./services/test-coordinator/Dockerfile
+    container_name: performance-test-coordinator
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - RABBITMQ_URL=amqp://admin:admin123@rabbitmq:5672/
+      - COORDINATOR_URL=http://test-coordinator:8000
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - performance-test-network
+    volumes:
+      - ./shared:/app/shared
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Test Worker 1
+  test-worker-1:
+    build:
+      context: .
+      dockerfile: ./services/test-worker/Dockerfile
+    container_name: performance-test-worker-1
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      - RABBITMQ_URL=amqp://admin:admin123@rabbitmq:5672/
+      - WORKER_ID=worker-1
+      - WORKER_PORT=8001
+      - LOG_LEVEL=INFO
+      - COORDINATOR_URL=http://test-coordinator:8000
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - performance-test-network
+    volumes:
+      - ./shared:/app/shared
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Test Worker 2
+  test-worker-2:
+    build:
+      context: .
+      dockerfile: ./services/test-worker/Dockerfile
+    container_name: performance-test-worker-2
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    environment:
+      - RABBITMQ_URL=amqp://admin:admin123@rabbitmq:5672/
+      - WORKER_ID=worker-2
+      - WORKER_PORT=8002
+      - LOG_LEVEL=INFO
+      - COORDINATOR_URL=http://test-coordinator:8000
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - performance-test-network
+    volumes:
+      - ./shared:/app/shared
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Test Worker 3
+  test-worker-3:
+    build:
+      context: .
+      dockerfile: ./services/test-worker/Dockerfile
+    container_name: performance-test-worker-3
+    ports:
+      - "8003:8003"
+    env_file:
+      - .env
+    environment:
+      - RABBITMQ_URL=amqp://admin:admin123@rabbitmq:5672/
+      - WORKER_ID=worker-3
+      - WORKER_PORT=8003
+      - LOG_LEVEL=INFO
+      - COORDINATOR_URL=http://test-coordinator:8000
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - performance-test-network
+    volumes:
+      - ./shared:/app/shared
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  rabbitmq_data:
+
+networks:
+  performance-test-network:
+    driver: bridge
