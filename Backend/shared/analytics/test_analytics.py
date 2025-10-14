@@ -64,6 +64,7 @@ class TestAnalytics:
         avg_latency = test_result.get("avg_latency", 0)
         max_latency = test_result.get("max_latency", 0)
         min_latency = test_result.get("min_latency", 0)
+        latency_variance = test_result.get("latency_variance", 0)
         
         return {
             "duration": duration,
@@ -75,6 +76,7 @@ class TestAnalytics:
             "avg_latency": round(avg_latency, 3),
             "max_latency": round(max_latency, 3),
             "min_latency": round(min_latency, 3),
+            "latency_variance": round(latency_variance, 3),
             "requests_per_second": round(total_requests / duration, 2) if duration > 0 else 0
         }
     

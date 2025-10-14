@@ -105,6 +105,7 @@
                 <th class="px-4 py-2 text-left">Requests</th>
                 <th class="px-4 py-2 text-left">Success Rate</th>
                 <th class="px-4 py-2 text-left">Avg Latency</th>
+                <th class="px-4 py-2 text-left">Latency Variance</th>
                 <th class="px-4 py-2 text-left">Error Rate</th>
               </tr>
             </thead>
@@ -124,6 +125,9 @@
                 <td class="px-4 py-2">{{ result.success_rate }}%</td>
                 <td class="px-4 py-2">
                   {{ (result.avg_latency || 0).toFixed(2) }}ms
+                </td>
+                <td class="px-4 py-2">
+                  {{ (result.latency_variance || 0).toFixed(2) }}ms²
                 </td>
                 <td class="px-4 py-2">{{ result.failure_rate }}%</td>
               </tr>

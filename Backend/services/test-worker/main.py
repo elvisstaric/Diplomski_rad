@@ -143,6 +143,11 @@ async def run_performance_test(test_task: Dict[str, Any]):
         min_latency = min(latencies) if latencies else 0
         avg_latency = total_latency / len(latencies) if latencies else 0
         
+        latency_variance = 0
+        if latencies and len(latencies) > 1:
+            variance_sum = sum((latency - avg_latency) ** 2 for latency in latencies)
+            latency_variance = variance_sum / (len(latencies) - 1)  
+        
         test_result = TestResult(
             test_id=test_id,
             worker_id=WORKER_ID,
@@ -153,6 +158,7 @@ async def run_performance_test(test_task: Dict[str, Any]):
             max_latency=max_latency,
             min_latency=min_latency,
             avg_latency=avg_latency,
+            latency_variance=latency_variance,
             error_details=error_details,
             start_time=start_time,
             end_time=end_time

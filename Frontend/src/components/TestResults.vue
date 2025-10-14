@@ -138,6 +138,12 @@
               </div>
               <div class="text-sm text-red-800">Max Latency</div>
             </div>
+            <div class="text-center p-3 bg-purple-50 rounded-lg">
+              <div class="text-2xl font-bold text-purple-600">
+                {{ (test.results.latency_variance || 0).toFixed(2) }}ms²
+              </div>
+              <div class="text-sm text-purple-800">Latency Variance</div>
+            </div>
           </div>
 
           <!-- Report Actions -->

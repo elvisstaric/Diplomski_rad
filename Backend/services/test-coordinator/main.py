@@ -702,6 +702,7 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
                     "total_requests": test_status.results.get("total_requests", 0),
                     "success_rate": test_status.results.get("success_rate", 0),
                     "avg_latency": round(test_status.results.get("avg_latency", 0), 2),
+                    "latency_variance": round(test_status.results.get("latency_variance", 0), 2),
                     "failure_rate": test_status.results.get("failure_rate", 0),
                     "error_categories": test_status.results.get("error_categories", {}),
                     "results": test_status.results
@@ -717,6 +718,7 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
                     "total_requests": test_status.results.get("total_requests", 0),
                     "success_rate": test_status.results.get("success_rate", 0),
                     "avg_latency": round(test_status.results.get("avg_latency", 0), 2),
+                    "latency_variance": round(test_status.results.get("latency_variance", 0), 2),
                     "failure_rate": test_status.results.get("failure_rate", 0),
                     "error_categories": test_status.results.get("error_categories", {}),
                     "results": test_status.results

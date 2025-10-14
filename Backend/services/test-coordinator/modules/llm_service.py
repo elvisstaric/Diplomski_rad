@@ -346,6 +346,7 @@ class LLMService:
         - Average Latency: {test_summary.get('avg_latency', 0)}ms
         - Maximum Latency: {test_summary.get('max_latency', 0)}ms
         - Minimum Latency: {test_summary.get('min_latency', 0)}ms
+        - Latency Variance: {test_summary.get('latency_variance', 0)}ms²
         - Requests per Second: {test_summary.get('requests_per_second', 0)}
         
         **ENDPOINT STATISTICS:**

@@ -490,6 +490,10 @@
                       {{ (result.avg_latency || 0).toFixed(2) }}ms
                     </p>
                     <p>
+                      <strong>Latency Variance:</strong>
+                      {{ (result.latency_variance || 0).toFixed(2) }}ms²
+                    </p>
+                    <p>
                       <strong>Failure Rate:</strong> {{ result.failure_rate }}%
                     </p>
                   </div>
