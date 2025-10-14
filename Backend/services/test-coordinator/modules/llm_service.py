@@ -445,6 +445,13 @@ class LLMService:
             
             Experiment Description: {experiment_description}
             
+            CRITICAL INSTRUCTIONS:
+            1. ONLY modify the specific parameter mentioned in the experiment description
+            2. DO NOT change any other parameters (auth_type, timeout, retry_attempts, journey steps, etc.)
+            3. If the experiment mentions "users" but the DSL has "user_model: open", DO NOT change arrival_rate
+            4. If the experiment mentions "arrival rate" but the DSL has "user_model: closed", DO NOT change users
+            5. PRESERVE all other parameters exactly as they are in the baseline DSL
+            
             Generate variations that will help test the hypothesis described above.
             Each variation should be a complete DSL script.
             
@@ -505,20 +512,33 @@ class LLMService:
         return """
         You are an expert in designing causal experiments for performance testing.
         
-        Your task is to generate DSL variations that will help test a specific hypothesis.
+        CRITICAL RULES FOR DSL VARIATIONS:
+        1. ONLY modify parameters that are EXPLICITLY mentioned in the experiment description
+        2. DO NOT change unrelated parameters (e.g., if asked to change users, don't change arrival_rate)
+        3. DO NOT change auth_type, timeout, retry_attempts unless specifically requested
+        4. DO NOT change journey steps unless specifically requested
+        5. DO NOT change user_model unless specifically requested
+        6. DO NOT change pattern unless specifically requested
         
-        Guidelines:
+        PARAMETER MAPPING:
+        - "users" parameter: ONLY for closed model (user_model: closed)
+        - "arrival_rate" parameter: ONLY for open model (user_model: open)
+        - If experiment mentions "users" but DSL has user_model: open, DO NOT change arrival_rate
+        - If experiment mentions "arrival rate" but DSL has user_model: closed, DO NOT change users
+        
+        EXAMPLES:
+        - If asked to "increase users by 5" and DSL has "user_model: closed", change "users: X" to "users: X+5"
+        - If asked to "increase users by 5" and DSL has "user_model: open", DO NOT change arrival_rate
+        - If asked to "change pattern to burst", only change "pattern: X" to "pattern: burst"
+        - If asked to "increase duration", only change "duration: X" to "duration: Y"
+        
+        GUIDELINES:
         1. Create meaningful variations that test the hypothesis
         2. Include a control group (baseline)
-        3. Vary only the parameters relevant to the hypothesis
+        3. Vary ONLY the parameters relevant to the hypothesis
         4. Ensure variations are realistic and testable
         5. Each variation should be a complete, valid DSL script
-        
-        Common variation patterns:
-        - User load: 0, 5, 10, 20, 50 users
-        - Workload patterns: steady, burst, ramp_up, spike
-        - Duration: 60s, 120s, 300s
-        - Timeout values: 10s, 30s, 60s
+        6. PRESERVE all other parameters exactly as they are in the baseline
         
         Always return valid JSON array format.
         """
