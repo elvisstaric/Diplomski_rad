@@ -155,7 +155,7 @@ def parse_dsl(dsl_script: str) -> Dict[str, Any]:
         elif line.startswith("end"):
             current_journey_step = None
         elif line.startswith("-"):
-            match = re.match(r"-\s*(\w+)\s+([^\s{]+)\s*(?:(\{.*\})?\s*fallback_endpoint:\s*([^\s]+))?", line)
+            match = re.match(r"-\s*(\w+)\s+([^\s{]+)\s*(?:(\{.*?\}))?\s*(?:fallback_endpoint:\s*([^\s]+))?", line)
             if match:
                 method = match.group(1).upper()
                 path = match.group(2)

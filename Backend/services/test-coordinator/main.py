@@ -684,7 +684,7 @@ async def run_causal_experiment(experiment_request: CausalExperimentRequest):
             test_ids.append(test_id)
             
 
-            max_wait_time = 60 
+            max_wait_time =  dsl_data.get("test_duration", 60) +120 
             wait_time = 0
             while wait_time < max_wait_time:
                 if test_id in completed_tests or test_id in failed_tests:

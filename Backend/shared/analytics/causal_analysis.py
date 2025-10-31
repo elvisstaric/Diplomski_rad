@@ -6,6 +6,23 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def convert_numpy_to_native(obj):
+    """Convert numpy types to Python native types for JSON serialization"""
+    if isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return [convert_numpy_to_native(item) for item in obj.tolist()]
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_to_native(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [convert_numpy_to_native(item) for item in obj]
+    else:
+        return obj
+
 class CausalAnalysisEngine:
     """Engine for performing causal inference analysis using DoWhy library"""
     
@@ -109,12 +126,12 @@ class CausalAnalysisEngine:
             success_rate_results = self.analyze_causal_effect(df, "success_rate")
             error_rate_results = self.analyze_causal_effect(df, "error_rate")
             
-            return {
+            return convert_numpy_to_native({
                 "latency_analysis": latency_results,
                 "success_rate_analysis": success_rate_results,
                 "error_rate_analysis": error_rate_results,
                 "analysis_type": "Multi-Metric Analysis"
-            }
+            })
             
         except Exception as e:
             self.logger.error(f"Error in multi-metric causal analysis: {e}")
@@ -145,25 +162,26 @@ class CausalAnalysisEngine:
                 if outcome_col in df.columns:
                     error_rate_values = df[outcome_col].dropna()
                     if len(error_rate_values) == 0 or error_rate_values.nunique() <= 1:
-                        return {
+                        result = {
                             "analysis_type": analysis_name,
                             "treatment_variable": "treatment",
                             "outcome_variable": outcome_col,
                             "causal_estimate": {},
                             "refutation_test": {},
                             "data_summary": {
-                                "total_observations": len(df),
-                                "treatment_groups": df["treatment"].nunique(),
-                                "endpoints": df["endpoint"].nunique(),
-                                "error_rate_stats": {
+                                "total_observations": int(len(df)),
+                                "treatment_groups": int(df["treatment"].nunique()),
+                                "endpoints": int(df["endpoint"].nunique()),
+                                "error_rate_stats": convert_numpy_to_native({
                                     "min": error_rate_values.min() if len(error_rate_values) > 0 else 0,
                                     "max": error_rate_values.max() if len(error_rate_values) > 0 else 0,
                                     "mean": error_rate_values.mean() if len(error_rate_values) > 0 else 0,
                                     "unique_values": error_rate_values.nunique()
-                                }
+                                })
                             },
                             "note": "No error rate variation detected - all requests were successful. Causal analysis not applicable for error rate."
                         }
+                        return convert_numpy_to_native(result)
             else:
                 outcome_col = "latency"
                 analysis_name = "Latency Analysis"
@@ -197,15 +215,15 @@ class CausalAnalysisEngine:
                 "causal_estimate": self.serialize_dowhy_object(estimate),  
                 "refutation_test": self.serialize_dowhy_object(refute),      
                 "data_summary": {
-                    "total_observations": len(df),
-                    "treatment_groups": df["treatment"].nunique(),
-                    "endpoints": df["endpoint"].nunique(),
-                    "mean_outcome_by_treatment": df.groupby("treatment")[outcome_col].mean().to_dict()
+                    "total_observations": int(len(df)),
+                    "treatment_groups": int(df["treatment"].nunique()),
+                    "endpoints": int(df["endpoint"].nunique()),
+                    "mean_outcome_by_treatment": convert_numpy_to_native(df.groupby("treatment")[outcome_col].mean().to_dict())
                 }
             }
             
             self.logger.info(f"Causal analysis completed for {analysis_name}")
-            return causal_results
+            return convert_numpy_to_native(causal_results)
             
         except Exception as e:
             self.logger.error(f"Error in causal analysis: {e}")
@@ -234,13 +252,13 @@ class CausalAnalysisEngine:
                 success_analysis = self.analyze_causal_effect(endpoint_df, "success_rate")
                 endpoint_analyses[f"{endpoint}_success"] = success_analysis
             
-            return {
+            return convert_numpy_to_native({
                 "endpoint_analyses": endpoint_analyses,
                 "summary": {
-                    "total_endpoints": len(endpoints),
-                    "analyzed_endpoints": len(endpoint_analyses) // 2  
+                    "total_endpoints": int(len(endpoints)),
+                    "analyzed_endpoints": int(len(endpoint_analyses) // 2)
                 }
-            }
+            })
             
         except Exception as e:
             self.logger.error(f"Error in multi-endpoint analysis: {e}")
