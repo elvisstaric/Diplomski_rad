@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
     global rabbitmq_connection, test_queue
     try:
         rabbitmq_connection = await aio_pika.connect_robust(
-            "amqp://guest:guest@localhost/"
+            "amqp://guest:guest@rabbitmq-rzavoj-it-rjesenja.onrender.com:5672"
         )
         channel = await rabbitmq_connection.channel()
         test_queue = await channel.declare_queue("test_tasks", durable=True)
