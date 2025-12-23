@@ -345,7 +345,7 @@ async def simulate_user_journey(user_id: int, target_url: str, test_task: Dict[s
 async def send_results_to_coordinator(test_result: TestResult):
     try:
         async with aiohttp.ClientSession() as session:
-            coordinator_url = "http://localhost:8001"
+            coordinator_url = "https://worker-razvoj-it.onrender.com"
 
             result_data = test_result.model_dump()
             if result_data.get("start_time"):
@@ -384,7 +384,7 @@ async def track_progress(test_id: str, start_time: datetime, test_duration: int,
 async def send_progress_update(test_id: str, progress: float):
     try:
         async with aiohttp.ClientSession() as session:
-            coordinator_url = "http://localhost:8001"
+            coordinator_url = "https://worker-razvoj-it.onrender.com"
             progress_data = {
                 "progress": progress,
                 "timestamp": datetime.now().isoformat()
@@ -404,7 +404,7 @@ async def send_progress_update(test_id: str, progress: float):
 async def send_error_to_coordinator(test_id: str, error_message: str):
     try:
         async with aiohttp.ClientSession() as session:
-            coordinator_url = "http://localhost:8001"
+            coordinator_url = "https://worker-razvoj-it.onrender.com"
             error_data = {
                 "error": error_message,
                 "timestamp": datetime.now().isoformat()
