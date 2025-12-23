@@ -96,7 +96,7 @@ export default {
 
     const checkBackendStatus = async () => {
       try {
-        await testApi.pingBackend("http://localhost:8001");
+        await testApi.pingBackend("https://worker-razvoj-it.onrender.com");
         backendStatus.value = { available: true };
       } catch (error) {
         backendStatus.value = { available: false };
