@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Body
+from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any
 import asyncio
 import aio_pika
@@ -52,6 +53,16 @@ async def check_timeout():
         await asyncio.sleep(30)
 
 app = FastAPI(title="Test Coordinator", version="1.0.0", lifespan=lifespan)
+origins = ["https://performance-testing-tool.onrender.com"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headres=["*"],
+)
+    
 
 active_tests: Dict[str, TestStatus] = {}
 completed_tests: Dict[str, TestStatus] = {}
