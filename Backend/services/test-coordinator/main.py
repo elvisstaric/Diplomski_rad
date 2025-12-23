@@ -53,11 +53,10 @@ async def check_timeout():
         await asyncio.sleep(30)
 
 app = FastAPI(title="Test Coordinator", version="1.0.0", lifespan=lifespan)
-origins = ["https://performance-testing-tool.onrender.com"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
