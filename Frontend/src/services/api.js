@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_BASE_URL = "/api";
+const API_BASE_URL = "https://worker-razvoj-it.onrender.com";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
